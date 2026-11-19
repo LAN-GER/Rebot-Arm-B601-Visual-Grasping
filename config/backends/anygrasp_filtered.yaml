@@ -1,0 +1,40 @@
+# Paths resolve relative to this backend configuration file.
+sdk_root: ../../sdk/anygrasp_sdk
+checkpoint: ../../sdk/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar
+max_gripper_width_m: 0.09
+gripper_height_m: 0.03
+timeout_s: 120
+# Extra travel along the candidate tool +X after applying the SDK grasp depth.
+insertion_depth_m: 0.005
+min_depth_m: 0.05
+max_depth_m: 1.0
+outlier_filter:
+  nb_neighbors: 20
+  std_ratio: 2.0
+# Optical camera XYZ (m), NOT robot-base reachability. Outside points remain
+# available for collision detection, but cannot seed grasps.
+workspace_camera:
+  min_m: [-0.25, -0.20, 0.10]
+  max_m: [0.25, 0.20, 0.60]
+# Conservative interior of the visible gripper on this fixed Gemini 336 mount.
+# Derived from camera-check-F9b4OCbE; review overlay after mount/jaw changes.
+# Not a complete CAD self filter. Set null to disable or recalibrate the profile.
+gripper_exclusion:
+  reference_resolution: [640, 480]
+  polygons_uv:
+    - [[0.49, 0.63], [0.56, 0.63], [0.68, 0.77], [0.80, 1.0], [0.35, 1.0], [0.38, 0.85]]
+  min_depth_m: 0.05
+  max_depth_m: 0.19
+# Initial engineering thresholds, to be refined with more captured scenes.
+pointcloud_quality:
+  min_scene_points: 1000
+  min_target_points: 300
+  min_valid_depth_ratio: 0.60
+  min_retained_ratio: 0.50
+  max_outlier_ratio: 0.20
+dense_grasp: false
+collision_detection: true
+# Camera-frame direction; null leaves direction unconstrained in preview.
+# To enforce base-frame downward approach, rotate [0,0,-1] into camera frame.
+approach_camera: null
+approach_thresh_rad: 0.5235987756

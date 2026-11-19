@@ -1,0 +1,13 @@
+# Base environment only. Install PyTorch first, then requirements.txt (see README).
+name: rebotarm
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy<2.0
+  - scipy>=1.10
+  - pinocchio=3.9.0
+  - matplotlib>=3.10.0
+  - pyyaml>=6.0
+  - pip

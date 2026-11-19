@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rebot-grasp"
+version = "0.1.0"
+description = "Modular RGB-D grasp planning for reBot Arm B601"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.23,<2", "PyYAML>=6"]
+
+[project.optional-dependencies]
+obb = ["opencv-python>=4.7,<4.12"]
+yolo = ["ultralytics==8.4.36"]
+realsense = ["pyrealsense2>=2.54"]
+orbbec = ["pyorbbecsdk2>=2.1"]
+visualization = ["open3d>=0.17"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+rebot-grasp = "rebot_grasp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

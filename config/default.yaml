@@ -1,0 +1,79 @@
+# Shared camera, robot and workflow settings.
+backend: obb
+target_class: null
+full_scene: false
+filters:
+  max_opening_m: 0.09
+  opening_margin_m: 0.005
+  min_score: 0.0
+planning:
+  pregrasp_offset_m: 0.08
+  retreat_offset_m: 0.10
+  workspace_min_m: [-0.6, -0.6, 0.0]
+  workspace_max_m: [0.6, 0.6, 0.8]
+  # Set this to the measured tool transform before planning TCP poses.
+  T_grasp_tcp: null
+
+camera:
+  type: "orbbec_gemini336"
+  serial: null
+  color_width: 640
+  color_height: 480
+  fps: 30
+
+calibration:
+  aruco:
+    marker_length_m: 0.1
+    dict_id: 0
+    target_marker_id: 0
+  hand_eye_method: TSAI
+  hand_eye_path: calibration/orbbec_gemini336/hand_eye.npz
+  hand_eye_compensation_m:
+    x: 0.00
+    y: 0.0
+    z: 0.0
+
+detection:
+  conf_threshold: 0.5
+  iou_threshold: 0.45
+
+robot:
+  repo_root: sdk/reBotArm_control_py
+  gripper:
+    dm:
+      angle_open: 5.0
+      counterclockwise: true
+      tau_max: 1.5
+      close_torque: 1.0
+      default_force: 0.30
+    rs:
+      angle_open: 5.0
+      counterclockwise: false
+      tau_max: 1.5
+      close_torque: 1.5
+      default_force: 0.30
+  ready_pose:
+    x: 0.3
+    y: 0.0
+    z: 0.3
+    roll: 0.0
+    pitch: 0.7
+    duration: 3.0
+
+yolo:
+  model_name: "yoloe-26s-seg.pt"
+  device: "cpu"
+  use_world: true
+  custom_classes:
+    - "yellow banana"
+    - "water bottle"
+    - "light blue coffee cup"
+    - "cup"
+    - "green object"
+    - "tool"
+    - "box"
+
+grasp_pipeline:
+  infer_every_live: 3
+  grasp:
+    min_base_z_m: -0.01

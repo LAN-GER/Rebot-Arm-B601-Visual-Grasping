@@ -1,0 +1,4 @@
+depth_quantile: 0.5
+insertion_depth_m: 0.015
+min_depth_m: 0.05
+max_depth_m: 1.0
