@@ -12,10 +12,12 @@
 
 ```bash
 bash examples/anygrasp_filtered/run.sh
-bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana" --insertion-depth-mm 5
+bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
 
-使用 `--single-window` 仅显示左右对照。配置在 [现场配置](../../config/anygrasp_filtered.yaml) 和 [后端参数](../../config/backends/anygrasp_filtered.yaml)，当前阈值 0.30、额外下探 0.005 m。下探沿工具 +X，应只在一个位置调整；命令行的毫米值会覆盖配置值。
+如果夹取深度不足，在执行命令末尾加 `--insertion-depth-mm <毫米数>`。这个值覆盖本轮沿工具接近方向的额外下探量，默认值为 5 mm。[后端配置](../../config/backends/anygrasp_filtered.yaml)
+
+使用 `--single-window` 仅显示左右对照。当前检测置信度阈值为 0.30。[现场配置](../../config/anygrasp_filtered.yaml)
 
 ## 回放和结果
 
