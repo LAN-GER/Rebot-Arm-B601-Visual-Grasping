@@ -84,20 +84,22 @@ For the Gemini 336, a successful calibration writes `config/calibration/orbbec_g
 
 ### 3.3 Execute an OBB or AnyGrasp pick
 
-**Filtered OBB.** Once the preview and calibration are correct, run with `--execute`. The arm first moves to its ready pose. Press **G** to capture a fresh frame and attempt a pick. Press **Q** or **Esc** to end the session. This example adds 5 mm of insertion along the tool's approach direction.
+**Filtered OBB.** Once the preview and calibration are correct, run with `--execute`. The arm first moves to its ready pose. Press **G** to capture a fresh frame and attempt a pick. Press **Q** or **Esc** to end the session.
 
 ```bash
-bash examples/obb_filtered/run.sh --execute --insertion-depth-mm 5
+bash examples/obb_filtered/run.sh --execute
 ```
 
 **Filtered AnyGrasp.** The first command opens the camera and loads the model. The left pane displays grasp candidates from the raw point cloud and the right pane displays candidates from the filtered cloud. The second command moves the arm to the ready pose. Press **G** to attempt a pick on the selected class using a candidate from the right pane that passes workspace and inverse kinematics checks.
 
 ```bash
 bash examples/anygrasp_filtered/run.sh
-bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana" --insertion-depth-mm 5
+bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
 
 In the image window, **1** selects the pen, **2** selects the orange, and **3** selects the banana. The order follows `yolo.custom_classes` in the configuration. A green box and white grasp line mark the selected target. Blue boxes and yellow lines mark other targets. The red dot is the grasp center between the jaws, and `Z` is its depth in camera coordinates. The arm skips the pick if the target is missing, the depth check fails, or no candidate is reachable. Press **Q** or **Esc** to end the session. [Filtered AnyGrasp guide (Chinese)](examples/anygrasp_filtered/README.md)
+
+**If the grasp is too shallow**, append `--insertion-depth-mm <mm>` to either filtered execution command and replace `<mm>` with the desired extra travel along the tool's approach direction. This sets the total extra insertion for the run. The current backend defaults are 0 mm for filtered OBB and 5 mm for filtered AnyGrasp. [Filtered OBB settings](config/backends/obb_filtered.yaml) · [Filtered AnyGrasp settings](config/backends/anygrasp_filtered.yaml)
 
 Standard AnyGrasp, GraspNet, single-frame capture, and playback have separate launch commands. [Example index and options (Chinese)](examples/README.md)
 
@@ -148,3 +150,39 @@ Rebot-Arm-B601-Visual-Grasping/
 ```
 
 The camera driver supplies RGB-D frames in a common format. The perception layer extracts targets, and the grasp backend proposes candidates in camera coordinates. The planner applies the hand–eye and TCP transforms to produce grasp plans in the robot base frame. The execution layer then calls the B601 control interface. [Architecture and coordinate conventions (Chinese)](docs/architecture.md)
+
+## 6. Hand–eye calibration and gripper replacement
+
+### How hand–eye calibration works
+
+The B601-RS SDK uses the URDF and measured joint angles to compute the pose of its end-effector frame, `gripper_end`. In eye-in-hand calibration, the camera moves with the arm and the ArUco board stays fixed. Each sample pairs the end-effector pose in the robot base frame with the board pose in the camera frame. The camera estimates the board pose using its intrinsics, the detected marker corners, and the marker's measured edge length.
+
+OpenCV's `calibrateHandEye` uses samples from several arm poses to solve for the camera-to-end-effector transform that makes the estimated board pose in the base frame consistent:
+
+```text
+T_base_board = T_base_tcp @ T_tcp_camera @ T_camera_board
+```
+
+The project saves `T_tcp_camera` as `T_result` in `hand_eye.npz`. Its rotation gives the orientation of the camera optical frame relative to `gripper_end`. The first three entries of the last column give the camera optical origin's position in that frame, in meters. The length of this translation vector is the distance between the two frame origins. [Calibration implementation](src/rebot_grasp/calibration/hand_eye.py) · [Calibration file locations](config/calibration/README.md)
+
+### What to update after replacing the gripper
+
+- If the camera and `gripper_end` keep the same relative position and orientation, keep the existing `hand_eye.npz` and update the grasp-to-TCP transform.
+- If the camera moves or rotates relative to `gripper_end`, rerun hand–eye calibration. If you redefine `gripper_end` in the URDF, transform the saved matrix into the new frame using the known change of frame, or recalibrate when that transform is unknown. [Hand–eye calibration steps](examples/hand_eye/README.md)
+
+To measure the new gripper offset:
+
+1. Open the jaws to a representative working width. Mark where each jaw will contact the object and use the midpoint between the two marks as the grasp center.
+2. Use the URDF or CAD to identify the origin and axes of `gripper_end`. For a virtual origin, pick a measurable mounting datum whose location in `gripper_end` is known, then measure from that datum to the new grasp center. Express the resulting offset along the `gripper_end` axes. The grasp frame uses +X as the approach direction and +Y along the jaw opening axis.
+3. Express the measured grasp frame in `gripper_end` as rotation `R` and translation `p` in meters. Invert that transform for `planning.T_grasp_tcp`. Use `Rᵀ` for rotation and `−Rᵀp` for translation. The planner applies `T_base_tcp = T_base_grasp @ T_grasp_tcp`.
+
+For aligned axes, a measured offset of **+10 mm in X, +2 mm in Y, and 0 mm in Z** gives the following setting. Replace the existing `T_grasp_tcp` entry under `planning` in the profile you run. [AnyGrasp](config/anygrasp.yaml) · [Filtered AnyGrasp](config/anygrasp_filtered.yaml) · [Filtered OBB](config/obb_filtered.yaml)
+
+```yaml
+planning:
+  T_grasp_tcp:
+    - [1, 0, 0, -0.010]
+    - [0, 1, 0, -0.002]
+    - [0, 0, 1,  0.000]
+    - [0, 0, 0,  1.000]
+```

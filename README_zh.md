@@ -84,20 +84,22 @@ bash examples/hand_eye/run.sh
 
 ### 3.3 执行 OBB 或 AnyGrasp 抓取
 
-**过滤版 OBB。** 预览位置和标定结果正确后，加 `--execute` 启动。机械臂会先进入准备位，按 **G** 重新采集并抓取，按 **Q** 或 **Esc** 结束。下例使用 5 mm 额外下探，沿工具接近方向应用。
+**过滤版 OBB。** 预览位置和标定结果正确后，加 `--execute` 启动。机械臂会先进入准备位，按 **G** 重新采集并抓取，按 **Q** 或 **Esc** 结束。
 
 ```bash
-bash examples/obb_filtered/run.sh --execute --insertion-depth-mm 5
+bash examples/obb_filtered/run.sh --execute
 ```
 
 **过滤版 AnyGrasp。** 第一条命令只开相机和模型，左侧显示原始点云对应的抓取候选，右侧显示过滤后的候选。第二条命令进入准备位，由 **G** 触发一轮抓取，执行当前类别在右侧通过工作范围和 IK 检查的候选。
 
 ```bash
 bash examples/anygrasp_filtered/run.sh
-bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana" --insertion-depth-mm 5
+bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
 
 图像窗口里 **1** 选笔、**2** 选橙子、**3** 选香蕉，顺序由配置里的 `yolo.custom_classes` 决定。绿色框和白色抓取线对应当前目标，蓝色框和黄色抓取线对应其余目标。红点表示两指之间的抓取中心，`Z` 是该点在相机坐标系中的深度。目标缺失、深度被拒或无可达候选时跳过抓取。按 **Q** 或 **Esc** 结束。[过滤版 AnyGrasp 说明](examples/anygrasp_filtered/README.md)
+
+**如果夹取深度不足**，可以在对应的过滤版执行命令末尾加 `--insertion-depth-mm <毫米数>`，把 `<毫米数>` 换成所需数值。它设置本轮沿工具接近方向的额外下探总量，并覆盖后端配置。当前过滤版 OBB 默认 0 mm，过滤版 AnyGrasp 默认 5 mm。[过滤版 OBB 配置](config/backends/obb_filtered.yaml) · [过滤版 AnyGrasp 配置](config/backends/anygrasp_filtered.yaml)
 
 普通版 AnyGrasp、GraspNet、单帧采集和回放有独立启动入口。[全部示例与参数](examples/README.md)
 
@@ -148,3 +150,39 @@ Rebot-Arm-B601-Visual-Grasping/
 ```
 
 相机驱动输出统一的 RGB-D 帧。检测层提取目标，抓取后端生成相机坐标系下的候选，规划层用手眼矩阵和 TCP 变换生成机器人基座坐标系下的抓取计划，执行层再调用 B601 的控制接口。[模块与坐标约定](docs/architecture.md)
+
+## 6. 手眼标定原理与更换夹爪
+
+### 手眼标定怎么求相机位姿
+
+B601-RS 的 SDK 根据 URDF 和实测关节角，计算末端坐标系 `gripper_end` 相对于机器人基座的位姿。眼在手上的标定让相机随机械臂运动，ArUco 标定板固定在原处。每次采样配对两组数据，一组是末端在基座坐标系中的位姿，另一组是标定板在相机坐标系中的位姿。后者由相机内参、识别到的标记角点和标记的实测边长求得。
+
+工程用 OpenCV 的 `calibrateHandEye` 处理多个机械臂姿态的配对数据，求出一个固定的相机到末端变换，使各组数据算出的标定板基座位姿尽量一致。
+
+```text
+T_base_board = T_base_tcp @ T_tcp_camera @ T_camera_board
+```
+
+工程把 `T_tcp_camera` 保存到 `hand_eye.npz` 的 `T_result` 字段。旋转部分表示相机光学坐标系的朝向。最后一列的前三项是相机光学原点在 `gripper_end` 中的位置，单位为米。对这三个分量取向量长度，就是两坐标系原点间的距离。[标定实现](src/rebot_grasp/calibration/hand_eye.py) · [标定文件位置](config/calibration/README.md)
+
+### 更换夹爪后怎么改
+
+- 如果相机和 `gripper_end` 的相对位置及朝向保持一致，继续用原来的 `hand_eye.npz`，更新抓取位姿到 TCP 的换算。
+- 如果相机相对 `gripper_end` 移动或转动，重新做手眼标定。如果在 URDF 里重新定义了 `gripper_end`，可以用已知的新旧坐标系变换换算原标定矩阵。变换未知时重新标定。[手眼标定步骤](examples/hand_eye/README.md)
+
+按以下步骤测量新夹爪的偏移：
+
+1. 把夹爪张到常用的抓取宽度。在两侧爪片各选一个实际接触物体的位置，用两点的中点作为夹持中心。
+2. 在 URDF 或 CAD 中确认 `gripper_end` 的原点及轴向。如果原点是虚拟点，选一个模型中已知位置且方便测量的安装基准，再从该基准测到新夹持中心。把结果换算为沿 `gripper_end` 各轴的有符号偏移。抓取坐标系的 +X 指向接近方向，+Y 沿夹爪开合方向。
+3. 将实测的夹持坐标系写成在 `gripper_end` 下的旋转 `R` 和平移 `p`，平移单位用米。填入 `planning.T_grasp_tcp` 时取逆，旋转填 `Rᵀ`，平移填 `−Rᵀp`。工程用 `T_base_tcp = T_base_grasp @ T_grasp_tcp` 算出机械臂应该到达的末端位姿。
+
+例如，两坐标系的轴向一致，实测夹持中心沿 X 偏移 **+10 mm**、沿 Y 偏移 **+2 mm**、沿 Z 偏移 **0 mm**，就按下面填写。替换实际运行配置中 `planning` 下已有的 `T_grasp_tcp`。[AnyGrasp](config/anygrasp.yaml) · [过滤版 AnyGrasp](config/anygrasp_filtered.yaml) · [过滤版 OBB](config/obb_filtered.yaml)
+
+```yaml
+planning:
+  T_grasp_tcp:
+    - [1, 0, 0, -0.010]
+    - [0, 1, 0, -0.002]
+    - [0, 0, 1,  0.000]
+    - [0, 0, 0,  1.000]
+```
