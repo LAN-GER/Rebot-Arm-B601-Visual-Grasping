@@ -1,135 +1,150 @@
-# reBot Arm B601 视觉抓取
+# reBot Arm B601 Visual Grasping
 
-用 RGB-D 相机采集场景，选定目标后使用 OBB、过滤版 OBB、AnyGrasp 或 GraspNet 生成抓取候选。当前现场组合是 B601-RS、Orbbec Gemini 336 和带 NVIDIA GPU 的 Ubuntu PC。AnyGrasp 与过滤版 OBB 共用同一套 B601 张爪、预抓取、下探、夹持和返回动作。当前香蕉抓取使用沿工具接近方向的 **5 mm** 额外下探。
+[简体中文](README_zh.md)
 
-## 在现场运行
+Use an RGB-D camera to identify objects, estimate grasp poses, and pick objects with a reBot Arm B601. The project includes OBB, filtered OBB, AnyGrasp, and GraspNet examples. This guide starts with a fresh Ubuntu environment and uses the B601-RS and Orbbec Gemini 336 as the reference setup. AnyGrasp also requires an NVIDIA GPU, a compatible CUDA environment, and an official license.
 
-以下命令从仓库根目录执行。启动器在这台电脑上使用已有的 `LJ` 环境。实时会话的输出目录必须是新目录，每次启动时重新生成。
+## 1. Create the environment and run the offline demo
 
-### AnyGrasp 多物体抓取
-
-普通版和过滤版都支持抓取笔、橙子和香蕉。默认选香蕉，检测置信度阈值为 0.30。在图像窗口按数字键切换目标，再按 **G** 重新采集 RGB-D 帧，对选中类别规划一次抓取。
-
-| 按键 | 抓取目标 | 启动时指定目标 |
-| --- | --- | --- |
-| **1** | 笔 | `--target-class pen` |
-| **2** | 橙子 | `--target-class orange` |
-| **3** | 香蕉 | `--target-class "yellow banana"` |
-
-**先看过滤效果**。从仓库根目录运行下面的命令即可打开相机预览。左图使用原始点云，右图使用过滤后的点云。AnyGrasp 对每个分割实例单独推理。绿色框和白线对应当前目标，其他物体用蓝框和黄色抓取线显示。线段连接两指端点，红点是抓取中心，`Z` 是该中心在相机坐标系下的深度，单位为米。只有框时可查看旁边的状态，`DEPTH REJECTED` 表示点云质量未通过，`NO GRASP` 表示没有有效候选。
+Install Git and Conda, then clone the repository and create a Python 3.10 environment named `rebot`. Run the remaining commands from the repository root with `rebot` active.
 
 ```bash
-bash examples/anygrasp_filtered/run.sh
+git clone https://github.com/LAN-GER/Rebot-Arm-B601-Visual-Grasping.git
+cd Rebot-Arm-B601-Visual-Grasping
+conda create -n rebot python=3.10 pip
+conda activate rebot
+python -m pip install -e '.[obb]'
 ```
 
-**真机抓取**。下面的命令以笔为初始目标，沿工具接近方向额外下探 5 mm。加上 `--execute` 后，机械臂会在启动时移到准备位。按 **G** 时只执行右图中当前目标通过工作区和可达性检查的候选。目标缺失或没有可达候选时跳过本次抓取。完成后自动恢复预览，可按 **2** 切换到橙子，再按 **G**。按 **Q** 或 **Esc** 结束会话。[过滤版示例说明](examples/anygrasp_filtered/README.md)
+The synthetic demo runs on a CPU. The first command generates an RGB-D frame and an OBB grasp candidate. The second replays the same frame. Check `result.json` and the preview image in the output directory.
 
 ```bash
-bash examples/anygrasp_filtered/run.sh --execute --target-class pen --insertion-depth-mm 5
+run_dir="outputs/setup-$(date +%s%N)"
+rebot-grasp demo --output "$run_dir/demo"
+rebot-grasp preview --input "$run_dir/demo/frame.npz" --output "$run_dir/replay"
 ```
 
-**普通版 AnyGrasp** 使用相同的选键和抓取线。下面两条命令分别启动相机预览和香蕉真机抓取。按 **G** 后显示该次快照，按 **R** 恢复实时画面。[普通版示例说明](examples/anygrasp/README.md)
+To create an environment that includes kinematics dependencies, use `conda env create -f environment.yml` in place of `conda create`. Then activate `rebot` and install the project as shown above. [Environment definition](environment.yml)
+
+## 2. Set up the camera, detection model, and SDKs
+
+| Feature | Requirements |
+| --- | --- |
+| RGB-D capture and ArUco checks | Camera Python SDK, USB permissions, and OpenCV with GUI support |
+| Live OBB preview | Camera, PyTorch, YOLOE segmentation weights, and a text encoder. The filtered example also needs Open3D |
+| Hand–eye calibration and robot execution | Camera, reBotArm control SDK, Pinocchio, MotorBridge, and a working CAN interface |
+| AnyGrasp preview and execution | Live OBB dependencies, plus an NVIDIA GPU, CUDA-enabled PyTorch, the AnyGrasp SDK, weights, and a license for the machine |
+
+**Camera SDK.** Run the command for your camera. Set `camera.type` in the default configuration. The Gemini 336 preset uses 640×480 at 30 FPS. Set `camera.serial` to select a device when several cameras of the same model are connected. [Default configuration](config/default.yaml)
 
 ```bash
-bash examples/anygrasp/run.sh --output "outputs/anygrasp-live/preview-$(date +%Y%m%d-%H%M%S-%N)"
-bash examples/anygrasp/run.sh --execute --target-class "yellow banana" \
-  --output "outputs/anygrasp-live/banana-$(date +%Y%m%d-%H%M%S-%N)"
+# Orbbec Gemini 336
+python -m pip install 'pyorbbecsdk2==2.0.18'
+
+# RealSense
+python -m pip install -e '.[realsense]'
 ```
 
-### OBB 与手眼标定
-
-**过滤版 OBB**使用完整二维分割轮廓确定中心和方向，使用过滤后的目标点估计深度并做质量检查。启动后可同时查看原始与过滤估计、点云和深度诊断。以下两行分别启动相机预览和现场用过的 5 mm 下探试验。
+**PyTorch and YOLOE.** CPU-only PyTorch is sufficient for live OBB. For AnyGrasp, use the PyTorch and CUDA versions required by your SDK in place of the CPU install command below. Install YOLOE afterward. Save the segmentation weights in `models/` and the text encoder at the repository root. [PyTorch installation commands](https://pytorch.org/get-started/previous-versions/) · [Ultralytics YOLOE documentation](https://github.com/ultralytics/ultralytics/blob/main/docs/en/models/yoloe.md)
 
 ```bash
+python -m pip install -r requirements-pytorch.txt --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -e '.[yolo,visualization]'
+python -m pip install 'git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40'
+mkdir -p models
+curl -fL -o models/yoloe-26s-seg.pt \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26s-seg.pt
+curl -fL -o mobileclip2_b.ts \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts
+```
+
+**Robot and AnyGrasp SDKs.** Check the robot variant (RS or DM), CAN channel, and URDF before running an example that moves the arm. Use the target machine's feature ID to request an AnyGrasp license. Place the license and detection checkpoint in the SDK directories listed in the setup guide. [SDK setup and checks (Chinese)](docs/sdk_setup.md)
+
+## 3. Run on hardware
+
+### 3.1 Check the camera and preview grasps
+
+Record a frame to check RGB-to-depth alignment, then open the filtered OBB preview. The preview uses only the camera. Press **G** in the window to save the frame and its grasp candidates. The output shows the raw and filtered grasp estimates side by side. [Filtered OBB guide (Chinese)](docs/obb_filtered.md)
+
+```bash
+rebot-grasp record --output "outputs/rgbd/frame-$(date +%s%N).npz"
 bash examples/obb_filtered/run.sh
-bash examples/obb_filtered/run.sh --execute --insertion-depth-mm 5
 ```
 
-**手眼标定**使用 100 mm、ID 0 的 ArUco 板。第一行只检查标记。第二行运行自动轨迹，求解成功后写入 `config/calibration/<相机型号>/hand_eye.npz`。另外提供等待关节稳定后抓帧、单独保存候选矩阵的示例。[标定说明](examples/hand_eye/README.md) · [稳定采样示例](examples/stationary_calibration/README.md)
+### 3.2 Run hand–eye calibration
+
+Check the ArUco marker before starting calibration. The default board uses a **100 mm marker with ID 0**. Measure the black marker edge after printing and enter its length in meters under `calibration.aruco.marker_length_m`. The first command opens the camera for a marker check. Clear the arm's travel area before running the second command, which moves it through the calibration trajectory. [Calibration instructions and printable boards (Chinese)](examples/hand_eye/README.md)
 
 ```bash
 bash examples/hand_eye/run.sh --check-marker
 bash examples/hand_eye/run.sh
 ```
 
-## 在新环境运行离线示例
+For the Gemini 336, a successful calibration writes `config/calibration/orbbec_gemini336/hand_eye.npz`. Recalibrate if you change the camera or its mounting position. Point `calibration.hand_eye_path` to the matrix for the current setup.
 
-Python 3.10+。合成 OBB 示例只需要 NumPy、PyYAML 和 OpenCV，在普通 CPU 上可运行。可从任意工作目录使用已安装的 `rebot-grasp`，此时请用 `--config` 指向仓库里的配置。各硬件和算法的额外依赖见 [SDK 安装说明](docs/sdk_setup.md)。
+### 3.3 Execute an OBB or AnyGrasp pick
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[obb]'
-rebot-grasp demo --output outputs/demo
-rebot-grasp preview --input outputs/demo/frame.npz --output outputs/demo-replay
-```
-
-用已有实拍录制复核 AnyGrasp 时，输入应包含目标 mask；仅含 RGB-D 的采集文件可加 `--detect` 重新分割。回放会使用录制中的相机位姿生成计划，缺少位姿时保存相机系候选。
+**Filtered OBB.** Once the preview and calibration are correct, run with `--execute`. The arm first moves to its ready pose. Press **G** to capture a fresh frame and attempt a pick. Press **Q** or **Esc** to end the session. This example adds 5 mm of insertion along the tool's approach direction.
 
 ```bash
-bash examples/replay/run.sh --config config/anygrasp.yaml --backend anygrasp \
-  --input /path/to/snapshot-001/frame.npz --output outputs/banana-replay
+bash examples/obb_filtered/run.sh --execute --insertion-depth-mm 5
 ```
 
-开发环境运行完整测试时，安装点云与测试依赖。
+**Filtered AnyGrasp.** The first command opens the camera and loads the model. The left pane displays grasp candidates from the raw point cloud and the right pane displays candidates from the filtered cloud. The second command moves the arm to the ready pose. Press **G** to attempt a pick on the selected class using a candidate from the right pane that passes workspace and inverse kinematics checks.
 
 ```bash
-python -m pip install -e '.[obb,visualization,dev]'
-python -m pytest -q
+bash examples/anygrasp_filtered/run.sh
+bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana" --insertion-depth-mm 5
 ```
 
-## 配置与调参
+In the image window, **1** selects the pen, **2** selects the orange, and **3** selects the banana. The order follows `yolo.custom_classes` in the configuration. A green box and white grasp line mark the selected target. Blue boxes and yellow lines mark other targets. The red dot is the grasp center between the jaws, and `Z` is its depth in camera coordinates. The arm skips the pick if the target is missing, the depth check fails, or no candidate is reachable. Press **Q** or **Esc** to end the session. [Filtered AnyGrasp guide (Chinese)](examples/anygrasp_filtered/README.md)
 
-| 要调整的内容 | 配置位置 | 当前值与用途 |
-| --- | --- | --- |
-| 相机、标定板、手眼路径、夹持力与准备位 | [config/default.yaml](config/default.yaml) | Gemini 336，640×480，30 fps。RS 参数在 `robot.gripper.rs` |
-| 检测词表、默认目标、置信度 | [普通版 AnyGrasp](config/anygrasp.yaml) · [过滤版 AnyGrasp](config/anygrasp_filtered.yaml) | `yolo.custom_classes` 的顺序对应数字键，`target_class` 指定初始目标，`detection.conf_threshold` 控制检测阈值 |
-| 基坐标工作范围、TCP 换算 | [AnyGrasp 现场配置](config/anygrasp.yaml) · [过滤版 AnyGrasp 现场配置](config/anygrasp_filtered.yaml) · [过滤版 OBB 现场配置](config/obb_filtered.yaml) | 现场配置继承 `default.yaml`，通过 `planning` 覆盖规划参数 |
-| AnyGrasp 额外下探 | [config/backends/anygrasp.yaml](config/backends/anygrasp.yaml) | `insertion_depth_m: 0.005`，在 SDK 候选深度基础上沿工具 +X 增加 5 mm |
-| 过滤版 AnyGrasp 额外下探与点云过滤 | [config/backends/anygrasp_filtered.yaml](config/backends/anygrasp_filtered.yaml) | 独立参数，默认下探 0.005 m |
-| 过滤版 OBB 额外下探 | [config/backends/obb_filtered.yaml](config/backends/obb_filtered.yaml) | 默认 `0.0`，单次运行可用 `--insertion-depth-mm 5` 覆盖 |
-| 普通 OBB 参数 | [config/backends/obb.yaml](config/backends/obb.yaml) | 独立的轮廓估计配置，插入深度默认 0.015 m |
-| 点云、夹爪遮罩与视觉工作区域 | 对应后端 YAML | `outlier_filter`、`gripper_exclusion`、`workspace_camera` 和 `pointcloud_quality`，XYZ 均在相机系 |
-| 模型与授权 | [SDK 安装说明](docs/sdk_setup.md) | SDK 和检测权重路径相对于后端 YAML，手眼路径相对于应用配置目录 |
+Standard AnyGrasp, GraspNet, single-frame capture, and playback have separate launch commands. [Example index and options (Chinese)](examples/README.md)
 
-改变 `insertion_depth_m` 调整的是抓取点沿接近方向的位置。手眼矩阵描述相机的刚性安装关系，重新安装相机时应重新标定。实际执行时采用的配置和矩阵写入会话的 `session.json`。
+## 4. Adjust settings and inspect results
 
-## 工程结构
+| Setting | Location |
+| --- | --- |
+| Camera type, resolution, calibration, ready pose, and gripper force | [config/default.yaml](config/default.yaml) |
+| Initial target, vocabulary, detection confidence, robot workspace, and TCP transform | [AnyGrasp](config/anygrasp.yaml) · [Filtered AnyGrasp](config/anygrasp_filtered.yaml) · [Filtered OBB](config/obb_filtered.yaml) |
+| Additional insertion depth, gripper mask, camera workspace, and point cloud quality thresholds | [Backend configuration](config/backends/). Set `insertion_depth_m` or use `--insertion-depth-mm` to override it for one filtered run |
+
+In live examples, pressing **G** saves results to a `snapshot-NNN/` subdirectory for the current run under `outputs/`. The launcher prints the run directory. If you pass `--output`, use a path that does not yet exist.
+
+- `frame.npz` contains the RGB-D frame for offline playback.
+- `result.json` records the target, point cloud quality, candidates, and plans. Filtered examples also save `comparison.png` and `comparison.json`.
+- `execution.json` records the result of an attempted robot pick. The controller reports whether it detected a held object in `object_held`.
+
+## 5. Project structure
 
 ```text
-├── pyproject.toml
+Rebot-Arm-B601-Visual-Grasping/
+├── environment.yml               # rebot Conda environment
+├── pyproject.toml                # Python package, optional dependencies, and CLI
 ├── config/
-│   ├── default.yaml、anygrasp.yaml、anygrasp_filtered.yaml、obb_filtered.yaml
-│   ├── backends/                 # obb、obb_filtered、anygrasp、anygrasp_filtered、graspnet
-│   └── calibration/              # 每个相机的内参与手眼结果
+│   ├── default.yaml              # Shared camera and robot settings
+│   ├── backends/                 # OBB, AnyGrasp, and GraspNet settings
+│   └── calibration/              # Per-camera calibration files
 ├── src/rebot_grasp/
-│   ├── cli.py、bootstrap.py、config.py
-│   ├── core/                     # 帧、目标、候选、计划和接口
-│   ├── cameras/                  # Orbbec、RealSense、录制与合成相机
-│   ├── perception/               # YOLO、实例选择、点云过滤与质量检查
-│   ├── grasping/                 # backends/、候选过滤与选择
-│   ├── geometry/                 # 坐标变换、工具轴与 TCP
-│   ├── calibration/              # ArUco、手眼求解、稳定采样与轨迹校验
-│   ├── robots/                   # B601、动作与夹爪控制
-│   ├── pipeline/                 # 采集、规划、执行与实时会话
-│   └── visualization/            # 图像叠加、点云窗口与诊断导出
-├── examples/                     # 每个示例独立目录，含 run.sh 和 README.md
-├── scripts/                      # 运行环境与旧命令的轻量入口
-├── tests/
-├── docs/
-└── sdk/                          # 本机外部 SDK、二进制依赖与授权
+│   ├── cli.py                    # Argument parsing and command dispatch
+│   ├── bootstrap.py              # Camera, backend, and robot setup
+│   ├── config.py                 # Configuration loading and validation
+│   ├── core/                     # Frames, targets, grasps, plans, and interfaces
+│   ├── cameras/                  # Orbbec, RealSense, and recorded frames
+│   ├── perception/               # YOLO segmentation, target selection, and point clouds
+│   ├── grasping/                 # Grasp backends, filtering, and ranking
+│   ├── geometry/                 # Coordinate and TCP transforms
+│   ├── calibration/              # ArUco detection and hand–eye calibration
+│   ├── robots/                   # B601, gripper, and motion control
+│   ├── pipeline/                 # Capture, planning, execution, and live sessions
+│   └── visualization/            # Overlays, point cloud views, and diagnostics
+├── examples/                     # Per-example launch script and instructions
+├── scripts/                      # Python launcher and legacy entry points
+├── tests/                        # Offline tests
+├── docs/                         # SDK setup, coordinate conventions, and module guides
+├── sdk/                          # Local third-party SDKs and licenses
+├── models/                       # Local segmentation weights
+└── outputs/                      # Local run results and recordings
 ```
 
-## 查找示例和结果
-
-完整清单列出每个示例使用的设备、启动行为及旧命令对应关系。[示例索引](examples/README.md)
-
-过滤版 AnyGrasp 默认把每次按 **G** 的结果写入 `outputs/anygrasp-filtered/run-*/result/snapshot-NNN/`。普通版使用 `--output` 指定的目录保存快照。
-
-- 查看这次抓的是哪一类、点云是否通过以及生成了哪些计划，打开 `result.json`。其中 `target_class` 对应按 **G** 时选中的类别。
-- 比较过滤前后的抓取位置，打开过滤版快照中的 `comparison.png` 和 `comparison.json`。`diagnostics.png` 显示分割和深度，`frame.npz` 可用于离线回放。
-- 查看机械臂是否实际发起抓取，打开 `execution.json`。`object_held` 是控制器对夹持状态的判断，复核滑落情况时应结合现场观察。
-
-过滤版 OBB 的位置和方向对比见[对照说明](docs/obb_filtered.md)。
-
-[模块与坐标约定](docs/architecture.md) · [点云质量与拒绝原因](docs/pointcloud_preprocessing.md) · [上游 B601 抓取教程](https://wiki.seeedstudio.com/cn/rebot_arm_b601_rs_grasping_demo/)
+The camera driver supplies RGB-D frames in a common format. The perception layer extracts targets, and the grasp backend proposes candidates in camera coordinates. The planner applies the hand–eye and TCP transforms to produce grasp plans in the robot base frame. The execution layer then calls the B601 control interface. [Architecture and coordinate conventions (Chinese)](docs/architecture.md)

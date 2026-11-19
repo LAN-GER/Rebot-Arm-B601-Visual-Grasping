@@ -1,5 +1,5 @@
 # Base environment only. Install PyTorch first, then requirements.txt (see README).
-name: rebotarm
+name: rebot
 channels:
   - conda-forge
   - defaults

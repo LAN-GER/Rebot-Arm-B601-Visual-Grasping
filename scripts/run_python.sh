@@ -6,7 +6,7 @@ cd "$root"
 python_bin=${REBOT_PYTHON:-python}
 paths="$root/src:$root/sdk/reBotArm_control_py"
 conda_exe=${CONDA_EXE:-$HOME/miniconda3/bin/conda}
-if [[ -z ${REBOT_PYTHON:-} && -x "$conda_exe" ]]; then
+if [[ -z ${REBOT_PYTHON:-} && ${CONDA_DEFAULT_ENV:-} != rebot && -x "$conda_exe" ]]; then
     conda_base=$(cd "$(dirname "$conda_exe")/.." && pwd)
     if [[ ${CONDA_DEFAULT_ENV:-} == LJ || -x "$conda_base/envs/LJ/bin/python" ]]; then
         unset PYTHONPATH LD_LIBRARY_PATH
