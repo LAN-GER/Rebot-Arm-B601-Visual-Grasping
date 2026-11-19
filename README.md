@@ -34,6 +34,7 @@ To create an environment that includes kinematics dependencies, use `conda env c
 | Live OBB preview | Camera, PyTorch, YOLOE segmentation weights, and a text encoder. The filtered example also needs Open3D |
 | Hand–eye calibration and robot execution | Camera, reBotArm control SDK, Pinocchio, MotorBridge, and a working CAN interface |
 | AnyGrasp preview and execution | Live OBB dependencies, plus an NVIDIA GPU, CUDA-enabled PyTorch, the AnyGrasp SDK, weights, and a license for the machine |
+| GraspNet preview and execution | Live OBB dependencies, plus an NVIDIA GPU, CUDA-enabled PyTorch, GraspNet-Baseline, its compiled operators, and a pretrained checkpoint |
 
 **Camera SDK.** Run the command for your camera. Set `camera.type` in the default configuration. The Gemini 336 preset uses 640×480 at 30 FPS. Set `camera.serial` to select a device when several cameras of the same model are connected. [Default configuration](config/default.yaml)
 
@@ -101,7 +102,35 @@ In the image window, **1** selects the pen, **2** selects the orange, and **3** 
 
 **If the grasp is too shallow**, append `--insertion-depth-mm <mm>` to either filtered execution command and replace `<mm>` with the desired extra travel along the tool's approach direction. This sets the total extra insertion for the run. The current backend defaults are 0 mm for filtered OBB and 5 mm for filtered AnyGrasp. [Filtered OBB settings](config/backends/obb_filtered.yaml) · [Filtered AnyGrasp settings](config/backends/anygrasp_filtered.yaml)
 
-Standard AnyGrasp, GraspNet, single-frame capture, and playback have separate launch commands. [Example index and options (Chinese)](examples/README.md)
+Standard AnyGrasp, single-frame capture, and playback have separate launch commands. [Example index and options (Chinese)](examples/README.md)
+
+### 3.4 Use GraspNet-Baseline
+
+Start with a working NVIDIA driver and Conda. Run the checker first. If it reports missing components, run the setup script. It creates or completes the `rebot` environment, installs the required CUDA toolkit and Python packages, builds missing PointNet2 and kNN operators, and downloads the default models. It finishes by running the checker again.
+
+```bash
+bash scripts/check_graspnet_env.sh
+bash scripts/setup_graspnet_env.sh
+conda activate rebot
+```
+
+The default checkpoint goes to `sdk/graspnet-baseline/checkpoints/checkpoint-rs.tar`. To use a different checkpoint, set `checkpoint` in the backend configuration. Relative paths are resolved from that YAML file. [Official pretrained weights](https://github.com/graspnet/graspnet-baseline#training-and-testing) · [GraspNet configuration](config/backends/graspnet.yaml)
+
+If Google Drive limits the download, place the checkpoint at the configured path using one of the official download options, or set `GRASPNET_CHECKPOINT_URL` to a trusted direct download. Run setup again to finish the check.
+
+For robot execution, run setup with `--robot` to install the B601 software as well. Run the checker with `--robot` after configuring the robot and completing hand–eye calibration. [Robot SDK and CAN setup (Chinese)](docs/sdk_setup.md)
+
+**Camera preview.** Use the camera and YOLOE setup from section 2. Run the preview and press **G** or **Space** to generate grasp candidates and inspect them in the point cloud window. Press **R** to resume live viewing or **Q** or **Esc** to exit. [GraspNet camera example (Chinese)](examples/graspnet_camera/README.md)
+
+```bash
+bash examples/graspnet_camera/run.sh
+```
+
+**Robot execution.** First calibrate the selected camera and check the candidates in the camera preview. The execution example reads `config/calibration/<camera_type>/hand_eye.npz`. It moves the arm to its ready pose on startup, including with `--dry-run`. Press **G** or **Space** to infer and execute a reachable grasp, or **Q** or **Esc** to end the session. Pass a class from the YOLOE vocabulary with `--target-class`. [GraspNet robot example (Chinese)](examples/graspnet_grasp/README.md)
+
+```bash
+bash examples/graspnet_grasp/run.sh --target-class "yellow banana"
+```
 
 ## 4. Adjust settings and inspect results
 

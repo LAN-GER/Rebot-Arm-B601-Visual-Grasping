@@ -34,6 +34,7 @@ rebot-grasp preview --input "$run_dir/demo/frame.npz" --output "$run_dir/replay"
 | 实时 OBB 预览 | 相机、PyTorch、YOLOE 分割权重和文本编码器。过滤版还需要 Open3D |
 | 手眼标定与真机抓取 | 相机、reBotArm 控制 SDK、Pinocchio、MotorBridge 和可用的 CAN 接口 |
 | AnyGrasp 预览与抓取 | 在实时 OBB 依赖基础上加入 NVIDIA GPU、CUDA 版 PyTorch、AnyGrasp SDK、权重与本机授权 |
+| GraspNet 预览与抓取 | 在实时 OBB 依赖基础上加入 NVIDIA GPU、CUDA 版 PyTorch、GraspNet-Baseline、编译后的算子及预训练权重 |
 
 **相机 SDK。** Gemini 336 可用下面的 Orbbec 安装命令。RealSense 用第二条。按实际型号选择，在 [config/default.yaml](config/default.yaml) 修改 `camera.type`；Gemini 336 的预设为 640×480、30 FPS。同型号相机有多台时，可设置 `camera.serial`。
 
@@ -101,7 +102,35 @@ bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 
 **如果夹取深度不足**，可以在对应的过滤版执行命令末尾加 `--insertion-depth-mm <毫米数>`，把 `<毫米数>` 换成所需数值。它设置本轮沿工具接近方向的额外下探总量，并覆盖后端配置。当前过滤版 OBB 默认 0 mm，过滤版 AnyGrasp 默认 5 mm。[过滤版 OBB 配置](config/backends/obb_filtered.yaml) · [过滤版 AnyGrasp 配置](config/backends/anygrasp_filtered.yaml)
 
-普通版 AnyGrasp、GraspNet、单帧采集和回放有独立启动入口。[全部示例与参数](examples/README.md)
+普通版 AnyGrasp、单帧采集和回放有独立启动入口。[全部示例与参数](examples/README.md)
+
+### 3.4 使用 GraspNet-Baseline
+
+先确保 NVIDIA 驱动和 Conda 可用。运行检查脚本，发现缺项时再运行配置脚本。它会创建或补齐 `rebot` 环境，安装所需的 CUDA Toolkit 和 Python 依赖，编译缺失的 PointNet2 与 kNN 算子，下载默认模型，并在完成后复检。
+
+```bash
+bash scripts/check_graspnet_env.sh
+bash scripts/setup_graspnet_env.sh
+conda activate rebot
+```
+
+默认权重保存到 `sdk/graspnet-baseline/checkpoints/checkpoint-rs.tar`。更换权重时，可修改后端配置的 `checkpoint`。相对路径以该 YAML 文件所在目录为准。[官方预训练权重](https://github.com/graspnet/graspnet-baseline#training-and-testing) · [GraspNet 配置](config/backends/graspnet.yaml)
+
+如果 Google Drive 限制下载，可以从官方提供的其他入口获取权重并放到配置路径，或用 `GRASPNET_CHECKPOINT_URL` 指定可信的直链。之后重新运行配置脚本完成复检。
+
+如果要真机抓取，给配置脚本加 `--robot`，同时安装 B601 软件依赖。配置机械臂并完成手眼标定后，给检查脚本加 `--robot` 复核。[机械臂 SDK 和 CAN 配置](docs/sdk_setup.md)
+
+**相机预览。** 沿用第 2 节的相机和 YOLOE 配置。启动后在图像窗口按 **G** 或**空格**生成抓取候选，在点云窗口查看结果。按 **R** 恢复实时画面，按 **Q** 或 **Esc** 退出。[GraspNet 相机示例](examples/graspnet_camera/README.md)
+
+```bash
+bash examples/graspnet_camera/run.sh
+```
+
+**真机抓取。** 先完成当前相机的手眼标定，并用相机预览检查候选。真机示例读取 `config/calibration/<相机型号>/hand_eye.npz`。启动时机械臂会进入准备位，使用 `--dry-run` 也会移动。按 **G** 或**空格**推理并执行可达候选，按 **Q** 或 **Esc** 结束。用 `--target-class` 指定 YOLOE 词表中的目标类别。[GraspNet 真机示例](examples/graspnet_grasp/README.md)
+
+```bash
+bash examples/graspnet_grasp/run.sh --target-class "yellow banana"
+```
 
 ## 4. 修改配置和查看结果
 
