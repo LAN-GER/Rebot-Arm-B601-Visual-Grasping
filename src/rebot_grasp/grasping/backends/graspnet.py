@@ -35,6 +35,9 @@ class GraspNetBackend:
         self.target_margin_px = target_margin_px
         self.target_expand_ratio = target_expand_ratio
 
+    def start(self):
+        self._detector.start()
+
     def predict(self, frame: RGBDFrame, target: Target | None) -> list[GraspCandidate]:
         cloud = from_rgbd(frame, target, self.min_depth_m, self.max_depth_m)
         target_points = cloud.points if cloud.target_mask is None else cloud.points[cloud.target_mask]

@@ -4,17 +4,153 @@
 
 Use an RGB-D camera to identify objects, estimate grasp poses, and pick objects with a reBot Arm B601. The project includes OBB, filtered OBB, AnyGrasp, and GraspNet examples. This guide starts with a fresh Ubuntu environment and uses the B601-RS and Orbbec Gemini 336 as the reference setup. AnyGrasp also requires an NVIDIA GPU, a compatible CUDA environment, and an official license.
 
-## 1. Create the environment and run the offline demo
-
-Install Git and Conda, then clone the repository and create a Python 3.10 environment named `rebot`. Run the remaining commands from the repository root with `rebot` active.
+On Ubuntu x86-64, install Git and curl. AnyGrasp and GraspNet also need an NVIDIA driver that lists your GPU when you run `nvidia-smi -L`. Clone the project and run the commands below from the repository root.
 
 ```bash
 git clone https://github.com/LAN-GER/Rebot-Arm-B601-Visual-Grasping.git
 cd Rebot-Arm-B601-Visual-Grasping
-conda create -n rebot python=3.10 pip
-conda activate rebot
-python -m pip install -e '.[obb]'
 ```
+
+Set `camera.type` to your camera model. The default is `orbbec_gemini336` at 640×480 and 30 FPS. Use `camera.serial` to select among cameras of the same model. [Default configuration](config/default.yaml)
+
+Choose one installation method. [Automatic setup](#1-automatic-environment-and-sdk-setup) · [Manual setup](#2-manual-environment-and-sdk-setup)
+
+## 1. Automatic environment and SDK setup
+
+Run the checker to see what is missing, run setup to install the missing components, then run the checker again to verify the result. These commands work with the camera and robot disconnected.
+
+```bash
+bash scripts/check_env.sh
+bash scripts/setup_env.sh
+bash scripts/check_env.sh
+```
+
+Setup reuses Conda or installs Miniforge in `~/miniforge3`, creates or completes the Python 3.10 environment `rebot`, and installs the configured camera driver. The default setup installs the B601 control SDK, YOLOE and the public dependencies for OBB, AnyGrasp and GraspNet, including missing CUDA operators. To limit the scope, use the same options on the setup and check commands.
+
+| Intended use | Options for both scripts |
+| --- | --- |
+| All backends and the B601 | No options |
+| OBB or filtered OBB camera preview, including on CPU | `--backend obb` |
+| AnyGrasp or GraspNet camera preview | `--backend anygrasp` or `--backend graspnet` |
+| One backend with the B601 | Add `--robot`, e.g. `--backend anygrasp --robot` |
+
+On a fresh machine the first check normally reports missing components. `[MANUAL]` marks files you supply, such as the machine-specific AnyGrasp license, its detection weights and the hand–eye matrix. Exit code `3` means only manual items remain. Supply the listed files and rerun the same check. If the GraspNet download hits a quota, pass `--checkpoint-file /path/to/checkpoint-rs.tar` to setup, or set `GRASPNET_CHECKPOINT_URL` to a trusted direct download. Interrupted installations can be rerun. [AnyGrasp authorization and file locations](docs/sdk_setup.md) · [Hand–eye calibration](examples/hand_eye/README.md)
+
+If setup installed Miniforge, first run `source ~/miniforge3/etc/profile.d/conda.sh` in your terminal. Run `conda activate rebot` before launching an example, then continue to [section 3](#3-run-the-examples).
+
+## 2. Manual environment and SDK setup
+
+Start with the common Python and camera steps, then install the SDKs for the examples you plan to use. OBB is implemented in this project and is ready for camera preview after steps 2.1 and 2.2.
+
+### 2.1 Create `rebot` and choose a PyTorch build
+
+With Conda available in the shell, create `rebot` from the project environment file. It includes Python 3.10, NumPy below 2 and Pinocchio 3.9.0 for the B601. If `rebot` already exists with Python 3.10, activate it and install any missing dependencies there. [Environment file](environment.yml) · [Miniforge installation](https://github.com/conda-forge/miniforge#install)
+
+```bash
+conda env create -f environment.yml
+conda activate rebot
+```
+
+**AnyGrasp or GraspNet on an NVIDIA GPU.** The tested combination on the RTX 4080 Laptop GPU uses PyTorch 2.5.1 and CUDA 12.1. The check below should print `12.1` and `True`.
+
+```bash
+python -m pip install 'torch==2.5.1+cu121' 'torchvision==0.20.1+cu121' 'torchaudio==2.5.1+cu121' \
+  --index-url https://download.pytorch.org/whl/cu121
+python -c 'import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())'
+```
+
+**OBB on CPU.** For a CPU-only installation, choose this PyTorch command.
+
+```bash
+python -m pip install -r requirements-pytorch.txt --index-url https://download.pytorch.org/whl/cpu
+```
+
+### 2.2 Install the camera driver and YOLOE
+
+Install the driver that matches `camera.type`. For the Orbbec Gemini 336, run `python -m pip install 'pyorbbecsdk2==2.0.18'`. For a RealSense D405 or D435i, run `python -m pip install 'pyrealsense2>=2.54'`. Configure USB access for the selected device. [Camera SDK guide](docs/sdk_setup.md)
+
+Install the project and fetch the default YOLOE segmentation weights and text encoder. The segmentation weights go in `models/`, and the text encoder goes in the repository root.
+
+```bash
+python -m pip install -e '.[obb,yolo,visualization]' scipy
+python -m pip install 'git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40'
+mkdir -p models
+curl -fL --retry 3 -o models/yoloe-26s-seg.pt \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26s-seg.pt
+curl -fL --retry 3 -o mobileclip2_b.ts \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts
+```
+
+### 2.3 Install the B601 control SDK for calibration and robot execution
+
+```bash
+git clone https://github.com/Seeed-Projects/reBotArm_control_py.git sdk/reBotArm_control_py
+python -m pip install 'motorbridge==0.6.0' 'meshcat>=0.3.2' 'matplotlib>=3.10'
+```
+
+If you created `rebot` without the project environment file, install the kinematics dependency with `conda install --override-channels -c conda-forge 'pinocchio=3.9.0' 'numpy<2'`. For a B601-RS, confirm `hardware_yaml: rebotarm_rs.yaml` in `sdk/reBotArm_control_py/config/rebotarm.yaml`, the CAN interface and the URDF before running the arm. The optional stationary calibration example also uses a separate collector and payload model. [B601 configuration and CAN setup](docs/sdk_setup.md) · [Stationary calibration](examples/stationary_calibration/README.md)
+
+### 2.4 Prepare the CUDA build tools for AnyGrasp and GraspNet
+
+Use a C++ compiler compatible with CUDA 12.1. If needed, install one with `conda install --override-channels -c conda-forge 'gcc_linux-64=12' 'gxx_linux-64=12'` and reactivate `rebot`. If you already have a CUDA 12.1 Toolkit, set `CUDA_HOME` to its installation directory. Otherwise install the toolkit into `rebot` as shown below.
+
+```bash
+conda install --override-channels -c nvidia/label/cuda-12.1.1 -c conda-forge 'cuda-toolkit=12.1'
+export CUDA_HOME="$CONDA_PREFIX"
+```
+
+Keep the same shell open for the backend builds. Confirm that `nvcc` reports release 12.1, then install the shared Python dependencies.
+
+```bash
+export PATH="$CUDA_HOME/bin:$PATH"
+export MAX_JOBS=2
+nvcc --version
+python -m pip install wheel ninja
+python -m pip install 'transforms3d>=0.4.2' \
+  'graspnetAPI @ git+https://github.com/graspnet/graspnetAPI.git@eb57dd2092d8dbe05312a29c3d0c22f3226efbfc'
+```
+
+### 2.5 Install and authorize AnyGrasp
+
+Build the SDK’s PointNet2 extension in `rebot` and compile MinkowskiEngine with OpenBLAS. Then read the feature ID on the machine that will run inference.
+
+```bash
+git clone https://github.com/graspnet/anygrasp_sdk.git sdk/anygrasp_sdk
+git clone --branch cuda-12-1 https://github.com/chenxi-wang/MinkowskiEngine.git sdk/MinkowskiEngine-cuda-12-1
+conda install --override-channels -c conda-forge 'openblas>=0.3.30,<0.4' 'numpy<2'
+python -c 'import ctypes, sys; ctypes.CDLL(sys.prefix + "/lib/libopenblas.so")'
+python -m pip install --no-build-isolation --no-deps ./sdk/anygrasp_sdk/pointnet2
+(
+  cd sdk/MinkowskiEngine-cuda-12-1 &&
+  python setup.py bdist_wheel --force_cuda --blas=openblas \
+    --blas_include_dirs="$CONDA_PREFIX/include" --blas_library_dirs="$CONDA_PREFIX/lib" &&
+  python -m pip install --no-deps dist/*.whl
+)
+python examples/anygrasp/check_sdk.py --feature-id
+```
+
+Use the reported `feature_id` to request the license and detection weights. Extract the full license directory, including `licenseCfg.json`, into `sdk/anygrasp_sdk/grasp_detection/license/`. Place the weights at `sdk/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar`. Run `bash scripts/check_env.sh --backend anygrasp` to check the files and GPU operators. The filtered preview or an offline replay verifies licensed inference. [Official registration](https://github.com/graspnet/anygrasp_sdk/tree/main/license_registration) · [Preview and replay commands](examples/anygrasp_filtered/README.md)
+
+### 2.6 Install GraspNet-Baseline
+
+Install its PointNet2 and kNN extensions inside the Baseline checkout so AnyGrasp can use its own PointNet2 in the same environment.
+
+```bash
+git clone https://github.com/graspnet/graspnet-baseline.git sdk/graspnet-baseline
+baseline="$PWD/sdk/graspnet-baseline"
+python -m pip install --no-build-isolation --no-deps --upgrade --target "$baseline/pointnet2" "$baseline/pointnet2"
+touch "$baseline/pointnet2/pointnet2/__init__.py"
+python -m pip install --no-build-isolation --no-deps --upgrade --target "$baseline/knn" "$baseline/knn"
+mkdir -p "$baseline/checkpoints"
+```
+
+Download the official **RealSense** checkpoint and save it as `sdk/graspnet-baseline/checkpoints/checkpoint-rs.tar`. For a different checkpoint, update `checkpoint` in the backend YAML. Relative paths start at that file’s directory. Run `bash scripts/check_env.sh --backend graspnet` to verify the camera-preview dependencies and CUDA operators. [Official pretrained weights](https://github.com/graspnet/graspnet-baseline#training-and-testing) · [GraspNet configuration](config/backends/graspnet.yaml)
+
+After a full manual installation, run `bash scripts/check_env.sh`. For a single backend, pass `--backend obb`, `--backend anygrasp` or `--backend graspnet`. Add `--robot` to include the arm driver and hand–eye matrix. A successful check exits with code `0`.
+
+## 3. Run the examples
+
+### Offline check
 
 The synthetic demo runs on a CPU. The first command generates an RGB-D frame and an OBB grasp candidate. The second replays the same frame. Check `result.json` and the preview image in the output directory.
 
@@ -23,45 +159,6 @@ run_dir="outputs/setup-$(date +%s%N)"
 rebot-grasp demo --output "$run_dir/demo"
 rebot-grasp preview --input "$run_dir/demo/frame.npz" --output "$run_dir/replay"
 ```
-
-To create an environment that includes kinematics dependencies, use `conda env create -f environment.yml` in place of `conda create`. Then activate `rebot` and install the project as shown above. [Environment definition](environment.yml)
-
-## 2. Set up the camera, detection model, and SDKs
-
-| Feature | Requirements |
-| --- | --- |
-| RGB-D capture and ArUco checks | Camera Python SDK, USB permissions, and OpenCV with GUI support |
-| Live OBB preview | Camera, PyTorch, YOLOE segmentation weights, and a text encoder. The filtered example also needs Open3D |
-| Hand–eye calibration and robot execution | Camera, reBotArm control SDK, Pinocchio, MotorBridge, and a working CAN interface |
-| AnyGrasp preview and execution | Live OBB dependencies, plus an NVIDIA GPU, CUDA-enabled PyTorch, the AnyGrasp SDK, weights, and a license for the machine |
-| GraspNet preview and execution | Live OBB dependencies, plus an NVIDIA GPU, CUDA-enabled PyTorch, GraspNet-Baseline, its compiled operators, and a pretrained checkpoint |
-
-**Camera SDK.** Run the command for your camera. Set `camera.type` in the default configuration. The Gemini 336 preset uses 640×480 at 30 FPS. Set `camera.serial` to select a device when several cameras of the same model are connected. [Default configuration](config/default.yaml)
-
-```bash
-# Orbbec Gemini 336
-python -m pip install 'pyorbbecsdk2==2.0.18'
-
-# RealSense
-python -m pip install -e '.[realsense]'
-```
-
-**PyTorch and YOLOE.** CPU-only PyTorch is sufficient for live OBB. For AnyGrasp, use the PyTorch and CUDA versions required by your SDK in place of the CPU install command below. Install YOLOE afterward. Save the segmentation weights in `models/` and the text encoder at the repository root. [PyTorch installation commands](https://pytorch.org/get-started/previous-versions/) · [Ultralytics YOLOE documentation](https://github.com/ultralytics/ultralytics/blob/main/docs/en/models/yoloe.md)
-
-```bash
-python -m pip install -r requirements-pytorch.txt --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -e '.[yolo,visualization]'
-python -m pip install 'git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40'
-mkdir -p models
-curl -fL -o models/yoloe-26s-seg.pt \
-  https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26s-seg.pt
-curl -fL -o mobileclip2_b.ts \
-  https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts
-```
-
-**Robot and AnyGrasp SDKs.** Check the robot variant (RS or DM), CAN channel, and URDF before running an example that moves the arm. Use the target machine's feature ID to request an AnyGrasp license. Place the license and detection checkpoint in the SDK directories listed in the setup guide. [SDK setup and checks (Chinese)](docs/sdk_setup.md)
-
-## 3. Run on hardware
 
 ### 3.1 Check the camera and preview grasps
 
@@ -106,21 +203,7 @@ Standard AnyGrasp, single-frame capture, and playback have separate launch comma
 
 ### 3.4 Use GraspNet-Baseline
 
-Start with a working NVIDIA driver and Conda. Run the checker first. If it reports missing components, run the setup script. It creates or completes the `rebot` environment, installs the required CUDA toolkit and Python packages, builds missing PointNet2 and kNN operators, and downloads the default models. It finishes by running the checker again.
-
-```bash
-bash scripts/check_graspnet_env.sh
-bash scripts/setup_graspnet_env.sh
-conda activate rebot
-```
-
-The default checkpoint goes to `sdk/graspnet-baseline/checkpoints/checkpoint-rs.tar`. To use a different checkpoint, set `checkpoint` in the backend configuration. Relative paths are resolved from that YAML file. [Official pretrained weights](https://github.com/graspnet/graspnet-baseline#training-and-testing) · [GraspNet configuration](config/backends/graspnet.yaml)
-
-If Google Drive limits the download, place the checkpoint at the configured path using one of the official download options, or set `GRASPNET_CHECKPOINT_URL` to a trusted direct download. Run setup again to finish the check.
-
-For robot execution, run setup with `--robot` to install the B601 software as well. Run the checker with `--robot` after configuring the robot and completing hand–eye calibration. [Robot SDK and CAN setup (Chinese)](docs/sdk_setup.md)
-
-**Camera preview.** Use the camera and YOLOE setup from section 2. Run the preview and press **G** or **Space** to generate grasp candidates and inspect them in the point cloud window. Press **R** to resume live viewing or **Q** or **Esc** to exit. [GraspNet camera example (Chinese)](examples/graspnet_camera/README.md)
+**Camera preview.** Run the preview and press **G** or **Space** to generate grasp candidates and inspect them in the point cloud window. Press **R** to resume live viewing or **Q** or **Esc** to exit. [GraspNet camera example (Chinese)](examples/graspnet_camera/README.md)
 
 ```bash
 bash examples/graspnet_camera/run.sh
@@ -170,7 +253,7 @@ Rebot-Arm-B601-Visual-Grasping/
 │   ├── pipeline/                 # Capture, planning, execution, and live sessions
 │   └── visualization/            # Overlays, point cloud views, and diagnostics
 ├── examples/                     # Per-example launch script and instructions
-├── scripts/                      # Python launcher and legacy entry points
+├── scripts/                      # Environment check, setup and launchers
 ├── tests/                        # Offline tests
 ├── docs/                         # SDK setup, coordinate conventions, and module guides
 ├── sdk/                          # Local third-party SDKs and licenses

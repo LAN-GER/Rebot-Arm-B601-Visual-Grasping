@@ -61,11 +61,13 @@ class GraspNetDetector:
         self.num_view = num_view
         self._model = None
 
-    def predict(self, sampled_points, scene_points, collision_thresh, voxel_size):
+    def start(self):
         if self._model is None:
             prepare_imports(self.sdk_root)
             self._model = build_net(self.checkpoint, self.num_view)
 
+    def predict(self, sampled_points, scene_points, collision_thresh, voxel_size):
+        self.start()
         import torch
 
         batch = torch.from_numpy(sampled_points[None]).to("cuda:0")

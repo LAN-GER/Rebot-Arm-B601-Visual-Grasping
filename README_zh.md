@@ -4,17 +4,153 @@
 
 用 RGB-D 相机识别物体、估计抓取位姿，并控制 reBot Arm B601 执行抓取。项目提供 OBB、过滤版 OBB、AnyGrasp 和 GraspNet 示例。下面从新装的 Ubuntu 环境开始，以 B601-RS 和 Orbbec Gemini 336 为例。AnyGrasp 还需要 NVIDIA GPU、配套 CUDA 环境和官方授权。
 
-## 1. 创建环境并运行离线示例
-
-先安装 Git 和 Conda。从终端克隆项目，创建 Python 3.10 环境 `rebot`。后续命令都在仓库根目录和已激活的 `rebot` 环境中运行。
+在 Ubuntu x86-64 上先安装 Git 和 curl。使用 AnyGrasp 或 GraspNet 时还需要 NVIDIA 驱动，运行 `nvidia-smi -L` 应能看到显卡。克隆工程后，在仓库根目录执行后续命令。
 
 ```bash
 git clone https://github.com/LAN-GER/Rebot-Arm-B601-Visual-Grasping.git
 cd Rebot-Arm-B601-Visual-Grasping
-conda create -n rebot python=3.10 pip
-conda activate rebot
-python -m pip install -e '.[obb]'
 ```
+
+先把 `camera.type` 设为实际相机型号。默认使用 `orbbec_gemini336`，分辨率为 640×480，帧率为 30 FPS。连接多台同型号相机时，可用 `camera.serial` 指定设备。[默认配置](config/default.yaml)
+
+两种安装方式任选一种。[脚本自动配置](#1-使用脚本自动配置环境和-sdk) · [手动配置](#2-手动配置环境和-sdk)
+
+## 1. 使用脚本自动配置环境和 SDK
+
+先用检查脚本查看缺项，再用配置脚本安装，最后独立复检。运行这三条命令时，相机和机械臂都可以断开。
+
+```bash
+bash scripts/check_env.sh
+bash scripts/setup_env.sh
+bash scripts/check_env.sh
+```
+
+配置脚本会沿用已有的 Conda，缺少时将 Miniforge 安装到 `~/miniforge3`。它会创建或补齐 Python 3.10 环境 `rebot`，按配置安装相机驱动。默认安装 B601 控制 SDK、YOLOE，以及 OBB、AnyGrasp 和 GraspNet 所需的公开依赖，并编译缺失的 CUDA 算子。只需部分功能时，给配置和检查命令传入相同的参数。
+
+| 要运行的功能 | 两个脚本通用的参数 |
+| --- | --- |
+| 全部抓取后端和 B601 机械臂 | 无需参数 |
+| OBB 或过滤版 OBB 相机预览，支持 CPU | `--backend obb` |
+| AnyGrasp 或 GraspNet 相机预览 | `--backend anygrasp` 或 `--backend graspnet` |
+| 单个后端加 B601 机械臂 | 追加 `--robot`，例如 `--backend anygrasp --robot` |
+
+新机器首次检查通常会报告缺项。`[MANUAL]` 表示需要自行提供的文件，例如 AnyGrasp 本机授权、配套检测权重和手眼标定矩阵。退出码 `3` 表示仅剩手动项，补齐后用相同参数重新检查。如果 GraspNet 下载受限，可给配置脚本加 `--checkpoint-file /path/to/checkpoint-rs.tar` 使用本地权重，或用 `GRASPNET_CHECKPOINT_URL` 指定可信直链。下载中断后可以重跑配置脚本。[AnyGrasp 授权与文件位置](docs/sdk_setup.md) · [手眼标定](examples/hand_eye/README.md)
+
+如果配置脚本刚安装了 Miniforge，先在当前终端执行 `source ~/miniforge3/etc/profile.d/conda.sh`。运行示例前执行 `conda activate rebot`，然后进入[第 3 节](#3-运行示例)。
+
+## 2. 手动配置环境和 SDK
+
+先配置 Python 和相机，再按要运行的示例选择对应 SDK。OBB 算法已包含在工程中，完成 2.1 和 2.2 即可运行相机预览。
+
+### 2.1 创建 `rebot` 环境并选择 PyTorch 版本
+
+在可使用 Conda 的终端中，用工程环境文件创建 `rebot`。该文件包含 Python 3.10、低于 2 的 NumPy 和 B601 所需的 Pinocchio 3.9.0。如果已经有 Python 3.10 的 `rebot` 环境，直接激活并在其中补齐依赖。[环境文件](environment.yml) · [Miniforge 安装说明](https://github.com/conda-forge/miniforge#install)
+
+```bash
+conda env create -f environment.yml
+conda activate rebot
+```
+
+**AnyGrasp 或 GraspNet 使用 NVIDIA GPU。** 本机 RTX 4080 Laptop GPU 已验证的组合为 PyTorch 2.5.1 和 CUDA 12.1。下面的检查应输出 `12.1` 和 `True`。
+
+```bash
+python -m pip install 'torch==2.5.1+cu121' 'torchvision==0.20.1+cu121' 'torchaudio==2.5.1+cu121' \
+  --index-url https://download.pytorch.org/whl/cu121
+python -c 'import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())'
+```
+
+**OBB 使用 CPU。** 仅配置 CPU 环境时，选择下面这条 PyTorch 安装命令。
+
+```bash
+python -m pip install -r requirements-pytorch.txt --index-url https://download.pytorch.org/whl/cpu
+```
+
+### 2.2 安装相机驱动和 YOLOE
+
+按 `camera.type` 选择驱动。Orbbec Gemini 336 执行 `python -m pip install 'pyorbbecsdk2==2.0.18'`。RealSense D405 或 D435i 执行 `python -m pip install 'pyrealsense2>=2.54'`。按相机厂商说明配置 USB 访问权限。[相机 SDK 说明](docs/sdk_setup.md)
+
+安装工程并下载默认 YOLOE 分割权重和文本编码器。分割权重放在 `models/`，文本编码器放在仓库根目录。
+
+```bash
+python -m pip install -e '.[obb,yolo,visualization]' scipy
+python -m pip install 'git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40'
+mkdir -p models
+curl -fL --retry 3 -o models/yoloe-26s-seg.pt \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26s-seg.pt
+curl -fL --retry 3 -o mobileclip2_b.ts \
+  https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts
+```
+
+### 2.3 安装手眼标定和真机抓取所需的 B601 控制 SDK
+
+```bash
+git clone https://github.com/Seeed-Projects/reBotArm_control_py.git sdk/reBotArm_control_py
+python -m pip install 'motorbridge==0.6.0' 'meshcat>=0.3.2' 'matplotlib>=3.10'
+```
+
+如果创建 `rebot` 时未使用工程环境文件，可执行 `conda install --override-channels -c conda-forge 'pinocchio=3.9.0' 'numpy<2'` 安装运动学依赖。使用 B601-RS 时，上机前在 `sdk/reBotArm_control_py/config/rebotarm.yaml` 中确认 `hardware_yaml: rebotarm_rs.yaml`，并核对 CAN 接口和 URDF。可选的稳定采样标定示例还需要独立的采集器和带载模型。[B601 与 CAN 配置](docs/sdk_setup.md) · [稳定采样标定](examples/stationary_calibration/README.md)
+
+### 2.4 配置 AnyGrasp 和 GraspNet 共用的 CUDA 编译工具
+
+使用与 CUDA 12.1 兼容的 C++ 编译器。需要安装时，可执行 `conda install --override-channels -c conda-forge 'gcc_linux-64=12' 'gxx_linux-64=12'`，然后重新激活 `rebot`。已有 CUDA 12.1 Toolkit 时，把 `CUDA_HOME` 设为其安装目录。也可以用下面的命令把 Toolkit 安装到 `rebot`。
+
+```bash
+conda install --override-channels -c nvidia/label/cuda-12.1.1 -c conda-forge 'cuda-toolkit=12.1'
+export CUDA_HOME="$CONDA_PREFIX"
+```
+
+在同一终端中继续编译后端。确认 `nvcc` 显示 `release 12.1` 后，安装共用的 Python 依赖。
+
+```bash
+export PATH="$CUDA_HOME/bin:$PATH"
+export MAX_JOBS=2
+nvcc --version
+python -m pip install wheel ninja
+python -m pip install 'transforms3d>=0.4.2' \
+  'graspnetAPI @ git+https://github.com/graspnet/graspnetAPI.git@eb57dd2092d8dbe05312a29c3d0c22f3226efbfc'
+```
+
+### 2.5 安装 AnyGrasp 并申请授权
+
+将 AnyGrasp 使用的 PointNet2 编译到 `rebot`，用 OpenBLAS 编译 MinkowskiEngine，然后在实际运行推理的机器上读取特征码。
+
+```bash
+git clone https://github.com/graspnet/anygrasp_sdk.git sdk/anygrasp_sdk
+git clone --branch cuda-12-1 https://github.com/chenxi-wang/MinkowskiEngine.git sdk/MinkowskiEngine-cuda-12-1
+conda install --override-channels -c conda-forge 'openblas>=0.3.30,<0.4' 'numpy<2'
+python -c 'import ctypes, sys; ctypes.CDLL(sys.prefix + "/lib/libopenblas.so")'
+python -m pip install --no-build-isolation --no-deps ./sdk/anygrasp_sdk/pointnet2
+(
+  cd sdk/MinkowskiEngine-cuda-12-1 &&
+  python setup.py bdist_wheel --force_cuda --blas=openblas \
+    --blas_include_dirs="$CONDA_PREFIX/include" --blas_library_dirs="$CONDA_PREFIX/lib" &&
+  python -m pip install --no-deps dist/*.whl
+)
+python examples/anygrasp/check_sdk.py --feature-id
+```
+
+用输出中的 `feature_id` 申请授权和检测权重。将包含 `licenseCfg.json` 的完整授权目录解压到 `sdk/anygrasp_sdk/grasp_detection/license/`，把权重放到 `sdk/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar`。执行 `bash scripts/check_env.sh --backend anygrasp` 可检查文件和 GPU 算子。要验证授权模型能否推理，可运行过滤版预览或离线回放。[官方授权申请](https://github.com/graspnet/anygrasp_sdk/tree/main/license_registration) · [预览与回放命令](examples/anygrasp_filtered/README.md)
+
+### 2.6 安装 GraspNet-Baseline
+
+将 Baseline 的 PointNet2 和 kNN 扩展安装到它自己的 SDK 目录，使 AnyGrasp 可以在同一环境中使用自己的 PointNet2。
+
+```bash
+git clone https://github.com/graspnet/graspnet-baseline.git sdk/graspnet-baseline
+baseline="$PWD/sdk/graspnet-baseline"
+python -m pip install --no-build-isolation --no-deps --upgrade --target "$baseline/pointnet2" "$baseline/pointnet2"
+touch "$baseline/pointnet2/pointnet2/__init__.py"
+python -m pip install --no-build-isolation --no-deps --upgrade --target "$baseline/knn" "$baseline/knn"
+mkdir -p "$baseline/checkpoints"
+```
+
+下载官方 **RealSense** 预训练权重，保存为 `sdk/graspnet-baseline/checkpoints/checkpoint-rs.tar`。如需更换权重，在后端 YAML 中修改 `checkpoint`，相对路径以该文件所在目录为准。运行 `bash scripts/check_env.sh --backend graspnet` 检查相机预览所需的依赖和 CUDA 算子。[官方预训练权重](https://github.com/graspnet/graspnet-baseline#training-and-testing) · [GraspNet 配置](config/backends/graspnet.yaml)
+
+手动配置完整工程后，运行 `bash scripts/check_env.sh`。如果只安装了单个后端，使用 `--backend obb`、`--backend anygrasp` 或 `--backend graspnet`。追加 `--robot` 可一起检查机械臂驱动和手眼矩阵。检查全部通过时退出码为 `0`。
+
+## 3. 运行示例
+
+### 离线验证
 
 只用 CPU 就能跑通合成场景。第一条命令生成模拟 RGB-D 和 OBB 候选，第二条回放同一帧。运行成功后可在输出目录查看 `result.json` 和预览图。
 
@@ -23,45 +159,6 @@ run_dir="outputs/setup-$(date +%s%N)"
 rebot-grasp demo --output "$run_dir/demo"
 rebot-grasp preview --input "$run_dir/demo/frame.npz" --output "$run_dir/replay"
 ```
-
-如果选择用仓库的 [environment.yml](environment.yml) 创建含运动学依赖的环境，用 `conda env create -f environment.yml` 替代上面的 `conda create`，然后同样执行 `conda activate rebot` 和项目安装命令。
-
-## 2. 配置相机、检测模型和 SDK
-
-| 要运行的功能 | 所需组件 |
-| --- | --- |
-| 相机采集与 ArUco 检查 | 对应的相机 Python SDK、USB 权限和支持 GUI 的 OpenCV |
-| 实时 OBB 预览 | 相机、PyTorch、YOLOE 分割权重和文本编码器。过滤版还需要 Open3D |
-| 手眼标定与真机抓取 | 相机、reBotArm 控制 SDK、Pinocchio、MotorBridge 和可用的 CAN 接口 |
-| AnyGrasp 预览与抓取 | 在实时 OBB 依赖基础上加入 NVIDIA GPU、CUDA 版 PyTorch、AnyGrasp SDK、权重与本机授权 |
-| GraspNet 预览与抓取 | 在实时 OBB 依赖基础上加入 NVIDIA GPU、CUDA 版 PyTorch、GraspNet-Baseline、编译后的算子及预训练权重 |
-
-**相机 SDK。** Gemini 336 可用下面的 Orbbec 安装命令。RealSense 用第二条。按实际型号选择，在 [config/default.yaml](config/default.yaml) 修改 `camera.type`；Gemini 336 的预设为 640×480、30 FPS。同型号相机有多台时，可设置 `camera.serial`。
-
-```bash
-# Orbbec Gemini 336
-python -m pip install 'pyorbbecsdk2==2.0.18'
-
-# RealSense
-python -m pip install -e '.[realsense]'
-```
-
-**PyTorch 与 YOLOE。** 只跑相机 OBB 时可用 CPU 版 PyTorch。准备运行 AnyGrasp 时，按 SDK 的 Python、PyTorch 和 CUDA 兼容要求，替换下面的 CPU 安装命令，再安装 YOLOE。把分割权重放在 `models/`，把文本编码器放在项目根目录。[PyTorch 版本安装表](https://pytorch.org/get-started/previous-versions/) · [Ultralytics YOLOE 文档](https://github.com/ultralytics/ultralytics/blob/main/docs/en/models/yoloe.md)
-
-```bash
-python -m pip install -r requirements-pytorch.txt --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -e '.[yolo,visualization]'
-python -m pip install 'git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40'
-mkdir -p models
-curl -fL -o models/yoloe-26s-seg.pt \
-  https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26s-seg.pt
-curl -fL -o mobileclip2_b.ts \
-  https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts
-```
-
-**机械臂和 AnyGrasp SDK。** 按下列文档分别配置控制 SDK 和 AnyGrasp。先确认 RS/DM 型号、CAN 通道和机械臂的 URDF，再运行涉及运动的示例。AnyGrasp 用户在目标机器上申请授权，并把授权及检测权重放入 SDK 对应目录。[SDK 安装与自检](docs/sdk_setup.md)
-
-## 3. 上机操作
 
 ### 3.1 检查相机和抓取预览
 
@@ -106,21 +203,7 @@ bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 
 ### 3.4 使用 GraspNet-Baseline
 
-先确保 NVIDIA 驱动和 Conda 可用。运行检查脚本，发现缺项时再运行配置脚本。它会创建或补齐 `rebot` 环境，安装所需的 CUDA Toolkit 和 Python 依赖，编译缺失的 PointNet2 与 kNN 算子，下载默认模型，并在完成后复检。
-
-```bash
-bash scripts/check_graspnet_env.sh
-bash scripts/setup_graspnet_env.sh
-conda activate rebot
-```
-
-默认权重保存到 `sdk/graspnet-baseline/checkpoints/checkpoint-rs.tar`。更换权重时，可修改后端配置的 `checkpoint`。相对路径以该 YAML 文件所在目录为准。[官方预训练权重](https://github.com/graspnet/graspnet-baseline#training-and-testing) · [GraspNet 配置](config/backends/graspnet.yaml)
-
-如果 Google Drive 限制下载，可以从官方提供的其他入口获取权重并放到配置路径，或用 `GRASPNET_CHECKPOINT_URL` 指定可信的直链。之后重新运行配置脚本完成复检。
-
-如果要真机抓取，给配置脚本加 `--robot`，同时安装 B601 软件依赖。配置机械臂并完成手眼标定后，给检查脚本加 `--robot` 复核。[机械臂 SDK 和 CAN 配置](docs/sdk_setup.md)
-
-**相机预览。** 沿用第 2 节的相机和 YOLOE 配置。启动后在图像窗口按 **G** 或**空格**生成抓取候选，在点云窗口查看结果。按 **R** 恢复实时画面，按 **Q** 或 **Esc** 退出。[GraspNet 相机示例](examples/graspnet_camera/README.md)
+**相机预览。** 启动后在图像窗口按 **G** 或**空格**生成抓取候选，在点云窗口查看结果。按 **R** 恢复实时画面，按 **Q** 或 **Esc** 退出。[GraspNet 相机示例](examples/graspnet_camera/README.md)
 
 ```bash
 bash examples/graspnet_camera/run.sh
@@ -170,7 +253,7 @@ Rebot-Arm-B601-Visual-Grasping/
 │   ├── pipeline/                 # 采集、规划、执行和实时会话
 │   └── visualization/            # 图像叠加、点云窗口和诊断输出
 ├── examples/                     # 每个示例一个目录，含 run.sh 和说明
-├── scripts/                      # Python 启动器和旧命令入口
+├── scripts/                      # 环境检查、自动配置及示例启动入口
 ├── tests/                        # 离线测试
 ├── docs/                         # SDK 配置、坐标约定和各模块说明
 ├── sdk/                          # 本地第三方 SDK 与授权

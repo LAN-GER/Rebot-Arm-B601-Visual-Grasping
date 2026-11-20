@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -25,6 +26,32 @@ def test_recording_in_millimeters_is_not_silently_accepted(tmp_path):
     path = tmp_path / "bad.npz"
     np.savez(path, color_bgr=np.zeros((2, 2, 3), np.uint8), depth_mm=np.ones((2, 2)), K=np.eye(3))
     assert main(["preview", "--input", str(path), "--output", str(tmp_path / "out")]) == 1
+
+
+def test_graspnet_replay_starts_backend_before_detection(monkeypatch, tmp_path):
+    from rebot_grasp.cameras.offline import save_recording
+    from rebot_grasp.cameras.synthetic import demo_capture
+    from rebot_grasp.pipeline import commands
+
+    capture, target = demo_capture()
+    recording = tmp_path / "frame.npz"
+    save_recording(recording, capture, target)
+    calls = []
+
+    def detect(_frame):
+        calls.append("detect")
+        return [target]
+
+    def predict(_frame, _target):
+        calls.append("predict")
+        return []
+
+    backend = SimpleNamespace(start=lambda: calls.append("start"), predict=predict)
+    monkeypatch.setattr(commands, "make_backend", lambda _config: backend)
+    monkeypatch.setattr(commands, "make_detector", lambda _config: SimpleNamespace(detect=detect))
+    assert main(["preview", "--backend", "graspnet", "--detect", "--no-image",
+                 "--input", str(recording), "--output", str(tmp_path / "result")]) == 2
+    assert calls == ["start", "detect", "predict"]
 
 
 def test_importing_all_new_modules_does_not_import_optional_sdks():

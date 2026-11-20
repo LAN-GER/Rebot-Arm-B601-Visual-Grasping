@@ -1,6 +1,6 @@
 # SDK 安装与自检
 
-先按项目 README 创建并激活 `rebot` 环境。下面的命令从仓库根目录运行。使用的相机驱动、SDK、权重和手眼标定文件随设备配置。[新用户安装指南](../README_zh.md)
+新用户在仓库根目录先运行 `bash scripts/check_env.sh`，再运行 `bash scripts/setup_env.sh` 补齐工程环境，最后执行 `conda activate rebot`。需要按组件配置或排查时，可参考下列手动步骤。使用的相机驱动、SDK、权重和手眼标定文件随设备配置。[新用户安装指南](../README_zh.md)
 
 ## 相机
 

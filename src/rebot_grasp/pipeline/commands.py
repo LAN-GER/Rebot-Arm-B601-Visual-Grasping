@@ -155,7 +155,8 @@ def run_preview(args) -> int:
     backend = make_backend(config)
     try:
         if not synthetic and args.detect:
-            if config.backend in ("anygrasp", "anygrasp_filtered"):
+            # Ultralytics can change CUDA_VISIBLE_DEVICES when selecting CPU.
+            if config.backend in ("anygrasp", "anygrasp_filtered", "graspnet"):
                 backend.start()
             targets = make_detector(config).detect(capture.frame)
         result = plan_capture(capture, targets, backend, config)
