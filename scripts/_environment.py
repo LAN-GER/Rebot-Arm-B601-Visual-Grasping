@@ -158,17 +158,31 @@ def probe(name, *args):
          "camera": camera_driver}[name](*args)
 
 
-def check(backend, robot):
+def check(backend, robot, summary_dir=None):
     missing = []
     manual = []
+
+    def record(group, label):
+        if summary_dir is not None:
+            with (summary_dir / group).open("a", encoding="utf-8") as stream:
+                print(label, file=stream)
+
+    def skipped(label):
+        record("skipped", label)
+        print(f"[SKIP] {label}")
 
     def item(label, fn, *args, user_action=False):
         try:
             detail = fn(*args)
         except Exception as exc:
             (manual if user_action else missing).append(label)
+            if user_action:
+                record("manual", f"{label} — {args[0]}")
+            else:
+                record("missing", label)
             print(f"[{'MANUAL' if user_action else 'MISSING'}] {label} — {exc}")
             return False
+        record("ready", label)
         print(f"[OK] {label}" + (f" — {detail}" if isinstance(detail, str) else ""))
         return True
 
@@ -181,10 +195,10 @@ def check(backend, robot):
             lines = result.stdout.strip().splitlines()
             raise RuntimeError(lines[-1] if lines else f"probe exited {result.returncode}")
 
-    item("Project package and CLI", project_package)
+    item("rebot-grasp (project package and CLI)", project_package)
     for module in ("numpy", "yaml", "scipy", "torch", "torchvision", "ultralytics", "open3d"):
-        item(module, import_module, module)
-    item("OpenCV GUI and ArUco", opencv)
+        item("PyYAML (yaml)" if module == "yaml" else module, import_module, module)
+    item("opencv-python (GUI and ArUco)", opencv)
     use_gpu = backend != "obb"
     gpu = use_gpu and item("CUDA runtime", cuda)
     if use_gpu:
@@ -194,7 +208,8 @@ def check(backend, robot):
         sys.path.insert(0, str(ROOT / "src"))
         cfg = settings(backend)
     except Exception as exc:
-        print(f"[SKIP] Unable to resolve configured SDK and model paths: {exc}")
+        print(f"Unable to resolve configured SDK and model paths: {exc}")
+        skipped("Checks that require configured SDK and model paths")
         return 1
 
     item(f"{cfg['camera']} SDK", camera_driver, cfg["camera_module"])
@@ -211,6 +226,8 @@ def check(backend, robot):
             item(module, import_module, module)
         if sdk_ok and motor_ok:
             item("B601 arm driver", robot_driver, cfg["robot"])
+        else:
+            skipped("B601 arm driver (requires the control SDK and MotorBridge)")
         from rebot_grasp.calibration.hand_eye import load_eye_in_hand
         item("Hand–eye matrix (see examples/hand_eye/README.md)", load_eye_in_hand,
              cfg["calibration"], user_action=True)
@@ -234,7 +251,7 @@ def check(backend, robot):
             item("GraspNet PointNet2 CUDA operator", native, "baseline_pointnet", sdk)
             item("GraspNet kNN CUDA operator", native, "knn", sdk)
     if use_gpu and not gpu:
-        print("[SKIP] CUDA operator tests require a working NVIDIA driver and CUDA PyTorch.")
+        skipped("CUDA operators for the selected backends (require a working NVIDIA driver and CUDA PyTorch)")
     if robot:
         print("Before hardware use, confirm the selected RS/DM variant, CAN channel and camera USB permissions.")
         collector = ROOT.parent / "rebot-arm-b601-robstride"
@@ -250,7 +267,11 @@ if __name__ == "__main__":
     command, *arguments = sys.argv[1:]
     try:
         if command == "check":
-            sys.exit(check(arguments[0], arguments[1] == "1"))
+            summary_dir = Path(arguments[2]) if len(arguments) > 2 else None
+            status = check(arguments[0], arguments[1] == "1", summary_dir)
+            if summary_dir is not None:
+                (summary_dir / "finished").touch()
+            sys.exit(status)
         elif command == "settings":
             for key, value in settings(arguments[0]).items():
                 print(f"{key}={value}")

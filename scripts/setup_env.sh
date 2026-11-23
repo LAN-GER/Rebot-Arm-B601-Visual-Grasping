@@ -6,6 +6,18 @@ source "$root/scripts/_environment.sh"
 action=setup
 env_options "$@"
 cd "$root"
+REBOT_INSTALL_JOURNAL=$(mktemp)
+export REBOT_INSTALL_JOURNAL
+install_summary() {
+    printf '\n----\nInstallation summary / 本次安装变更\n'
+    if [[ -s "$REBOT_INSTALL_JOURNAL" ]]; then
+        cat "$REBOT_INSTALL_JOURNAL"
+    else
+        echo 'No packages or SDKs changed. / 本次无变更。'
+    fi
+    rm -f -- "$REBOT_INSTALL_JOURNAL"
+}
+trap install_summary EXIT
 if [[ "$(uname -s)/$(uname -m)" != Linux/x86_64 ]]; then
     echo 'This installer supports Ubuntu x86-64. See docs/sdk_setup.md for manual setup.' >&2
     exit 1
@@ -28,6 +40,7 @@ install_miniforge() (
         https://github.com/conda-forge/miniforge/releases/download/26.9.4-2/Miniforge3-26.9.4-2-Linux-x86_64.sh
     printf '%s  %s\n' bbaf16b3897da24c4be50315934ba74848f617b4495982841d6a0a60e0edbbdf "$installer" | sha256sum --check
     bash "$installer" -b -p "$prefix"
+    echo "[installer] Installed Miniforge 26.9.4-2 ($prefix)" >> "$REBOT_INSTALL_JOURNAL"
     printf 'To activate Conda in your shell: source "%s/etc/profile.d/conda.sh"\n' "$prefix"
 )
 if ! conda_exe=$(find_conda); then
@@ -35,6 +48,11 @@ if ! conda_exe=$(find_conda); then
     conda_exe="$HOME/miniforge3/bin/conda"
 fi
 conda_base=$("$conda_exe" info --base)
+package_helper="$root/scripts/_install_packages.py"
+conda_install() { "$conda_base/bin/python" "$package_helper" conda "$@"; }
+pip_install() { python "$package_helper" pip "$@"; }
+satisfies() { python "$package_helper" satisfies "$@"; }
+created=0
 env_dirs=$("$conda_exe" env list --json)
 if ! "$conda_base/bin/python" -c '
 import json, sys
@@ -43,29 +61,29 @@ sys.exit(not any(Path(p).name == "rebot" for p in json.load(sys.stdin)["envs"]))
 ' <<<"$env_dirs"; then
     echo 'Creating rebot with Python 3.10'
     "$conda_exe" create -y -n rebot --override-channels -c conda-forge python=3.10 pip
+    created=1
 fi
 set +u
 source "$conda_base/etc/profile.d/conda.sh"
 conda activate rebot
 set -u
+if (( created )); then
+    "$conda_base/bin/python" "$package_helper" created "$CONDA_PREFIX"
+fi
 unset PYTHONPATH
 export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
-if [[ ! -x "$CONDA_PREFIX/bin/python" ]]; then
-    conda install -y --override-channels -c conda-forge python=3.10 pip
+if [[ ! -x "$CONDA_PREFIX/bin/python" ]] || ! python -c 'import sys; sys.exit(sys.version_info[:2] != (3,10))'; then
+    conda_install -c conda-forge python=3.10 pip
     hash -r
 fi
-if ! python -c 'import sys; print(sys.executable, sys.version.split()[0]); sys.exit(sys.version_info[:2] != (3,10))'; then
-    echo 'The existing rebot environment must use Python 3.10. See README for setup.' >&2
-    exit 1
-fi
-if ! python -m pip --version >/dev/null 2>&1; then
-    conda install -y --override-channels -c conda-forge pip 'python=3.10'
+python -c 'import sys; print(sys.executable, sys.version.split()[0])'
+if ! satisfies 'pip>=22.2' >/dev/null 2>&1; then
+    conda_install -c conda-forge 'pip>=22.2' 'python=3.10'
 fi
 
 probe() { python "$root/scripts/_environment.py" probe "$@"; }
 works() { probe "$@" >/dev/null 2>&1; }
 has() { python -c "$1" >/dev/null 2>&1; }
-pip_install() { python -m pip install "$@"; }
 
 stage='Preparing PyTorch, the project and camera driver'
 echo "$stage"
@@ -91,7 +109,7 @@ if (( gpu )); then
 elif ! has 'import torch, torchvision'; then
     pip_install -r requirements-pytorch.txt --index-url https://download.pytorch.org/whl/cpu
 fi
-if ! works project || ! works opencv || ! has '
+if ! works project || ! works opencv || ! satisfies 'numpy>=1.23,<2' 'opencv-python>=4.7,<4.12' 'open3d>=0.17' 'PyYAML>=6' || ! has '
 import numpy, scipy, open3d, ultralytics
 assert numpy.__version__.startswith("1.") and ultralytics.__version__ == "8.4.36"
 '; then
@@ -112,8 +130,8 @@ baseline=${cfg[baseline]}
 checkpoint=${cfg[checkpoint]}
 any_sdk=${cfg[anygrasp]}
 case "$camera_module" in
-    pyorbbecsdk) works camera "$camera_module" || pip_install 'pyorbbecsdk2==2.0.18' ;;
-    pyrealsense2) works camera "$camera_module" || pip_install 'pyrealsense2>=2.54' ;;
+    pyorbbecsdk) { works camera "$camera_module" && satisfies 'pyorbbecsdk2==2.0.18'; } || pip_install 'pyorbbecsdk2==2.0.18' ;;
+    pyrealsense2) { works camera "$camera_module" && satisfies 'pyrealsense2>=2.54'; } || pip_install 'pyrealsense2>=2.54' ;;
 esac
 
 source "$root/scripts/_sdk_assets.sh"
@@ -134,10 +152,11 @@ install_yolo() {
 
 install_robot() {
     clone_sdk "$robot_sdk" reBotArm_control_py/actuator/rebotarm.py https://github.com/Seeed-Projects/reBotArm_control_py.git
-    if ! has 'from pinocchio import forwardKinematics'; then
-        conda install -y --override-channels -c conda-forge 'pinocchio=3.9.0' 'numpy<2'
+    if ! has 'import pinocchio; from pinocchio import forwardKinematics; assert pinocchio.__version__ == "3.9.0"'; then
+        conda_install -c conda-forge 'pinocchio=3.9.0' 'numpy<2'
     fi
-    if ! has 'from motorbridge import Controller, Mode, CallError; import meshcat, matplotlib'; then
+    if ! has 'from motorbridge import Controller, Mode, CallError; import meshcat, matplotlib' ||
+        ! satisfies 'motorbridge==0.6.0' 'meshcat>=0.3.2' 'matplotlib>=3.10'; then
         pip_install 'motorbridge==0.6.0' 'meshcat>=0.3.2' 'matplotlib>=3.10'
     fi
 }
@@ -156,14 +175,14 @@ prepare_toolkit() {
     if [[ -z "$cuda_root" ]]; then
         label="cuda-${torch_cuda}.0"
         if [[ "$torch_cuda" == 12.1 ]]; then label=cuda-12.1.1; fi
-        conda install -y --override-channels -c "nvidia/label/$label" -c conda-forge "cuda-toolkit=$torch_cuda"
+        conda_install -c "nvidia/label/$label" -c conda-forge "cuda-toolkit=$torch_cuda"
         cuda_root=$CONDA_PREFIX
         "$cuda_root/bin/nvcc" --version | grep -F "release $torch_cuda,"
     fi
     export CUDA_HOME="$cuda_root"
     version=$("${CXX:-c++}" -dumpversion 2>/dev/null || true)
     if [[ -z "$version" || ( "$torch_cuda" == 12.1 && "${version%%.*}" -gt 12 ) ]]; then
-        conda install -y --override-channels -c conda-forge 'gcc_linux-64=12' 'gxx_linux-64=12'
+        conda_install -c conda-forge 'gcc_linux-64=12' 'gxx_linux-64=12'
         set +u
         conda activate rebot
         set -u
@@ -193,7 +212,7 @@ install_anygrasp() {
         esac
         local source="$root/sdk/MinkowskiEngine-$branch"
         clone_sdk "$source" setup.py https://github.com/chenxi-wang/MinkowskiEngine.git --branch "$branch"
-        conda install -y --override-channels -c conda-forge 'openblas>=0.3.30,<0.4' 'numpy<2'
+        conda_install -c conda-forge 'openblas>=0.3.30,<0.4' 'numpy<2'
         python -c 'import ctypes, sys; ctypes.CDLL(sys.prefix + "/lib/libopenblas.so")'
         # Repairing the BLAS runtime can also restore an already-built extension.
         if works minkowski; then return; fi
@@ -201,8 +220,11 @@ install_anygrasp() {
             cd "$source"
             local wheels
             wheels=$(mktemp -d)
-            trap 'rm -f -- "$wheels"/*.whl; rmdir -- "$wheels"' EXIT
-            python setup.py bdist_wheel --dist-dir "$wheels" --force_cuda --blas=openblas \
+            trap 'rm -rf -- "$wheels"' EXIT
+            # Upstream setup.py invokes pip uninstall while building. Keep that
+            # subprocess inside a disposable venv until the wheel is reviewed.
+            python -m venv --system-site-packages "$wheels/build-env"
+            PATH="$wheels/build-env/bin:$PATH" "$wheels/build-env/bin/python" setup.py bdist_wheel --dist-dir "$wheels" --force_cuda --blas=openblas \
                 --blas_include_dirs="$CONDA_PREFIX/include" --blas_library_dirs="$CONDA_PREFIX/lib"
             pip_install --no-deps --force-reinstall "$wheels"/*.whl
         )
@@ -241,7 +263,7 @@ install_graspnet_weights() {
 }
 
 install_graspnet_api() {
-    has 'import graspnetAPI, transforms3d' || pip_install 'transforms3d>=0.4.2' \
+    { has 'import graspnetAPI, transforms3d' && satisfies 'transforms3d>=0.4.2'; } || pip_install 'transforms3d>=0.4.2' \
         'graspnetAPI @ git+https://github.com/graspnet/graspnetAPI.git@eb57dd2092d8dbe05312a29c3d0c22f3226efbfc'
 }
 

@@ -34,6 +34,10 @@ bash scripts/check_env.sh
 | AnyGrasp 或 GraspNet 相机预览 | `--backend anygrasp` 或 `--backend graspnet` |
 | 单个后端加 B601 机械臂 | 追加 `--robot`，例如 `--backend anygrasp --robot` |
 
+缺少的包或 SDK 会自动安装。已有包（含间接依赖）需要升级、降级或更换 Conda 构建时，终端会列出原版本和目标版本，输入 `y` 才执行该批变更。回车、回答 `n` 或在非交互环境运行都会跳过需要确认的批次。已有 Git SDK 会继续复用。构建明确要求切换 SDK 分支时，脚本会显示两个提交号并询问。结束时，`----` 下方列出本次实际发生的变更。
+
+检查脚本在最后的 `----` 下列出当前所选后端已就绪和缺失或不可用的包、SDK 与运行文件。需要手动提供的文件和因前置条件不足而未检查的项目会单独列出。
+
 新机器首次检查通常会报告缺项。`[MANUAL]` 表示需要自行提供的文件，例如 AnyGrasp 本机授权、配套检测权重和手眼标定矩阵。退出码 `3` 表示仅剩手动项，补齐后用相同参数重新检查。如果 GraspNet 下载受限，可给配置脚本加 `--checkpoint-file /path/to/checkpoint-rs.tar` 使用本地权重，或用 `GRASPNET_CHECKPOINT_URL` 指定可信直链。下载中断后可以重跑配置脚本。[AnyGrasp 授权与文件位置](docs/sdk_setup.md) · [手眼标定](examples/hand_eye/README.md)
 
 如果配置脚本刚安装了 Miniforge，先在当前终端执行 `source ~/miniforge3/etc/profile.d/conda.sh`。运行示例前执行 `conda activate rebot`，然后进入[第 3 节](#3-运行示例)。

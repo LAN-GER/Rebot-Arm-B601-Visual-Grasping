@@ -34,6 +34,10 @@ Setup reuses Conda or installs Miniforge in `~/miniforge3`, creates or completes
 | AnyGrasp or GraspNet camera preview | `--backend anygrasp` or `--backend graspnet` |
 | One backend with the B601 | Add `--robot`, e.g. `--backend anygrasp --robot` |
 
+Missing packages and SDKs install automatically. When an existing package or dependency needs a version or Conda build change, setup shows the current and proposed versions. Enter `y` to apply that transaction. Enter, `n`, or a noninteractive run skips transactions requiring approval. Existing Git SDKs are reused. If a build requires a different SDK branch, setup shows both revisions and asks before switching. The final section below `----` lists the changes actually made.
+
+The checker lists ready and missing or unusable packages, SDKs and runtime files for the selected backends below the final `----`. It lists files you must supply and checks it could not run separately.
+
 On a fresh machine the first check normally reports missing components. `[MANUAL]` marks files you supply, such as the machine-specific AnyGrasp license, its detection weights and the hand–eye matrix. Exit code `3` means only manual items remain. Supply the listed files and rerun the same check. If the GraspNet download hits a quota, pass `--checkpoint-file /path/to/checkpoint-rs.tar` to setup, or set `GRASPNET_CHECKPOINT_URL` to a trusted direct download. Interrupted installations can be rerun. [AnyGrasp authorization and file locations](docs/sdk_setup.md) · [Hand–eye calibration](examples/hand_eye/README.md)
 
 If setup installed Miniforge, first run `source ~/miniforge3/etc/profile.d/conda.sh` in your terminal. Run `conda activate rebot` before launching an example, then continue to [section 3](#3-run-the-examples).
