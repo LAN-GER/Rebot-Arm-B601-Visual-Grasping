@@ -9,14 +9,46 @@ import importlib.util
 import multiprocessing as mp
 import os
 from pathlib import Path
+import shutil
 import sysconfig
+from tempfile import TemporaryDirectory
+
+
+def prepare_sdk_binary(sdk_dir):
+    """Place the matching SDK extension next to the license as required by gsnet."""
+    directory = Path(sdk_dir).resolve()
+    filename = "gsnet" + sysconfig.get_config_var("EXT_SUFFIX")
+    target = directory / "gsnet.so"
+    for candidate in (directory / filename, target):
+        if candidate.is_file() and candidate.resolve().parent == directory:
+            return None
+
+    source = directory / "gsnet_versions" / filename
+    if not source.is_file():
+        raise FileNotFoundError(f"No gsnet binary for this Python ABI at {source}")
+
+    # Use a regular file. The native SDK resolves its extension's physical path
+    # and looks for the license relative to it.
+    with TemporaryDirectory(dir=directory, prefix=".gsnet-") as work:
+        staged = Path(work) / target.name
+        shutil.copyfile(source, staged)
+        try:
+            os.link(staged, target)
+        except FileExistsError:
+            if target.is_file() and target.resolve().parent == directory:
+                return None
+            raise FileExistsError(f"Cannot place gsnet next to its license. Inspect {target}.") from None
+    return target
 
 
 def load_sdk_module(sdk_dir):
     suffix = sysconfig.get_config_var("EXT_SUFFIX")
     directory = Path(sdk_dir)
-    candidates = [directory / ("gsnet" + suffix), directory / "gsnet.so",
-                  directory / "gsnet_versions" / ("gsnet" + suffix)]
+    root = directory.resolve()
+    direct = (directory / ("gsnet" + suffix), directory / "gsnet.so")
+    local = [path.resolve() for path in direct if path.is_file()]
+    candidates = [path for path in local if path.parent == root] + local
+    candidates.append(directory / "gsnet_versions" / ("gsnet" + suffix))
     binary = next((path.resolve() for path in candidates if path.is_file()), None)
     if binary is None:
         raise FileNotFoundError(f"No gsnet binary for this Python ABI ({suffix}) in {sdk_dir}")

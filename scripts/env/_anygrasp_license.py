@@ -197,13 +197,17 @@ def configure(sdk, sdk_dir, source, checkpoint=None):
 
 def main(backend, action, *args):
     from rebot_grasp.config import load_backend_options
-    from rebot_grasp.grasping.backends._anygrasp_sdk import load_sdk_module
+    from rebot_grasp.grasping.backends._anygrasp_sdk import load_sdk_module, prepare_sdk_binary
     import torch  # Load the libtorch libraries used by the native gsnet module.
 
     source = Path(args[0]).expanduser().resolve() if action == "2" else None
     options = load_backend_options(ROOT / "config/default.yaml", backend)
     sdk_dir = Path(options["sdk_root"]) / "grasp_detection"
     os.chdir(sdk_dir)
+    if action == "2":
+        installed = prepare_sdk_binary(sdk_dir)
+        if installed is not None:
+            print(f"AnyGrasp extension installed at {installed}")
     sdk = load_sdk_module(sdk_dir)
     if action == "1":
         feature = sdk.get_feature_id()

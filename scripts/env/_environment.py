@@ -278,6 +278,12 @@ if __name__ == "__main__":
         elif command == "settings":
             for key, value in settings(arguments[0]).items():
                 print(f"{key}={value}")
+        elif command == "prepare-anygrasp":
+            from rebot_grasp.grasping.backends._anygrasp_sdk import prepare_sdk_binary
+
+            result = prepare_sdk_binary(Path(arguments[0]) / "grasp_detection")
+            if result is not None:
+                print(f"[SDK] Installed AnyGrasp extension at {result}")
         elif command == "probe":
             probe(*arguments)
         else:

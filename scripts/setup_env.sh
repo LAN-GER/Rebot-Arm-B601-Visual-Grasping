@@ -193,10 +193,14 @@ prepare_toolkit() {
 }
 
 install_anygrasp() {
-    clone_sdk "$any_sdk" pointnet2/setup.py https://github.com/graspnet/anygrasp_sdk.git
-    if [[ "${cfg[any_filtered]}" != "$any_sdk" ]]; then
-        clone_sdk "${cfg[any_filtered]}" pointnet2/setup.py https://github.com/graspnet/anygrasp_sdk.git
-    fi
+    local -a sdk_roots=("$any_sdk")
+    if [[ "${cfg[any_filtered]}" != "$any_sdk" ]]; then sdk_roots+=("${cfg[any_filtered]}"); fi
+    local sdk_root installed
+    for sdk_root in "${sdk_roots[@]}"; do
+        clone_sdk "$sdk_root" pointnet2/setup.py https://github.com/graspnet/anygrasp_sdk.git
+        installed=$(python "$root/scripts/env/_environment.py" prepare-anygrasp "$sdk_root")
+        if [[ -n "$installed" ]]; then printf '%s\n' "$installed" >> "$REBOT_INSTALL_JOURNAL"; fi
+    done
     if (( ! gpu )); then echo 'AnyGrasp CUDA builds deferred until a working GPU is available.'; return; fi
     local need_point=0 need_me=0 branch
     works any_pointnet || need_point=1
