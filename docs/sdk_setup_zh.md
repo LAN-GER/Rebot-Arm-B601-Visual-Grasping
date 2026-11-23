@@ -81,4 +81,4 @@ bash examples/anygrasp_filtered/run.sh --input /path/to/snapshot-001/frame.npz
 
 ## Python 启动器
 
-执行 `conda activate rebot` 后，`scripts/run_python.sh` 使用当前环境的 Python，并从仓库根目录运行示例。需要指定其他解释器时，可设置 `REBOT_PYTHON=/absolute/path/to/python`。
+执行 `conda activate rebot` 后，`scripts/run_python.sh` 使用当前环境的 Python，并从仓库根目录运行示例。启动器会隔离继承的 Python 路径、动态库路径和用户目录中的包，避免 ROS Humble 和用户级依赖覆盖 Conda 中的依赖。需要指定其他解释器时，可设置 `REBOT_PYTHON=/absolute/path/to/python`。

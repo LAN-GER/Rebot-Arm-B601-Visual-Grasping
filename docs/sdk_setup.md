@@ -81,4 +81,4 @@ bash examples/anygrasp_filtered/run.sh --input /path/to/snapshot-001/frame.npz
 
 ## Python launcher
 
-After `conda activate rebot`, `scripts/run_python.sh` uses the active environment's interpreter and runs examples from the repository root. Set `REBOT_PYTHON=/absolute/path/to/python` to select another interpreter.
+After `conda activate rebot`, `scripts/run_python.sh` uses the active environment's interpreter and runs examples from the repository root. The launcher isolates `rebot` from inherited Python and native library paths and from user-site packages, so ROS Humble cannot shadow the Conda dependencies. Set `REBOT_PYTHON=/absolute/path/to/python` to select another interpreter.
