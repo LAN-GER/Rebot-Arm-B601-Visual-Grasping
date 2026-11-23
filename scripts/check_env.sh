@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-source "$root/scripts/_environment.sh"
+source "$root/scripts/env/_environment.sh"
 action=check
 env_options "$@"
 cd "$root"
@@ -73,7 +73,7 @@ echo "[OK] rebot Python $version"
 unset PYTHONPATH
 export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
 status=0
-"$conda_exe" run -n rebot --no-capture-output python -u scripts/_environment.py check "$backend" "$robot" "$summary_dir" || status=$?
+"$conda_exe" run -n rebot --no-capture-output python -u scripts/env/_environment.py check "$backend" "$robot" "$summary_dir" || status=$?
 if (( status != 0 )) && [[ ! -f "$summary_dir/finished" ]]; then
     record skipped 'The package and SDK checks did not finish'
 fi

@@ -1,9 +1,11 @@
-# RGB-D 单帧采集
+# Single-frame RGB-D capture
 
-只用相机。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+This example uses only the camera. Run from the repository root.
 
 ```bash
 bash examples/rgbd_capture/run.sh --output outputs/capture/frame.npz
 ```
 
-使用配置指定的相机采集并对齐彩色图和深度。深度以米保存。可用 `--camera-type`、`--width`、`--height`、`--fps` 覆盖默认档位。
+The configured camera captures and aligns a color image and depth frame. Depth is saved in meters. Use `--camera-type`, `--width`, `--height`, and `--fps` to override the defaults.

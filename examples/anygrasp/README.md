@@ -1,11 +1,13 @@
-# AnyGrasp 实时抓取
+# Live AnyGrasp
 
-当前桌面词表为 `pen`（笔）、`orange`（橙子）和 `yellow banana`（香蕉）。窗口显示每个检测实例的类别和置信度。绿色框表示本轮抓取目标，蓝色框表示其他识别结果。默认抓香蕉，可用 `--target-class pen` 或 `--target-class orange` 切换目标。预览逐实例使用各自的 mask 调用 AnyGrasp。白线为当前目标的候选，黄色线为其他物体的候选，Z 表示候选中心的相机深度。点云质量被拒或无有效候选时会在实例旁标记原因。按图像窗口中的 **1 选笔、2 选橙子、3 选香蕉**（对应配置中的词表顺序）。选中后按 **G** 重新采图，执行模式只抓当前类别。目标缺失时跳过此次抓取。
+[简体中文](README_zh.md)
 
-相机预览，显式执行时连接机械臂。从仓库根目录运行。
+The current tabletop vocabulary is `pen`, `orange`, and `yellow banana`. The window shows the class and confidence for each detected instance. The green box marks the current target, and blue boxes mark other detections. The default target is the banana. Use `--target-class pen` or `--target-class orange` to switch it. The preview runs AnyGrasp for each instance using its mask. White lines show current target candidates, yellow lines show other candidates, and Z gives the depth of the candidate center in camera coordinates. The window labels instances rejected by point cloud quality checks or without a valid candidate. Press **1** for pen, **2** for orange, or **3** for banana in the image window. The keys follow the configured vocabulary order. Press **G** to capture a new frame. Execution mode grasps the selected class and skips the action if the target is absent.
+
+Set up the [AnyGrasp license and detection weights](../../README.md#anygrasp-license-and-detection-weights) before starting. Run the camera preview from the repository root. Robot execution is opt-in.
 
 ```bash
 bash examples/anygrasp/run.sh --output "outputs/anygrasp-live/run-$(date +%Y%m%d-%H%M%S-%N)"
 ```
 
-按 G 之前，预览会周期性对新 RGB-D 帧运行 AnyGrasp。**白线**连接当前最高分有效候选的两个夹爪端点投影，**红点**是抓取中心。目标模式另显示绿色实例框及 YOLO 置信度，全场景模式直接在场景中找候选。候选为空时显示原因。画面刷新取决于检测和抓取推理耗时，底部显示帧龄。按 G 后重新采图、推理；执行模式再按机械臂工作范围与 IK 选取可达候选。按 R 返回实时预览。加 `--execute` 后启动即移动到准备位，按 G 执行抓取。结果按快照保存，Q/Esc 结束会话。
+While waiting for **G**, the preview periodically runs AnyGrasp on new RGB-D frames. A **white line** connects the projected fingertips of the highest-scoring valid candidate, and a **red dot** marks its center. Target mode also shows a green instance box with YOLO confidence. Full-scene mode searches the scene for candidates. The window gives a reason when no candidates are available. Refresh speed depends on detection and grasp inference time. Frame age appears at the bottom. Press **G** to capture a new frame and run inference. In execution mode the planner checks the robot workspace and IK to choose a reachable candidate. Press **R** to resume live preview. With `--execute`, the robot moves to the ready pose on startup and executes a grasp when you press **G**. Results are saved by snapshot. Press **Q** or **Esc** to end the session.

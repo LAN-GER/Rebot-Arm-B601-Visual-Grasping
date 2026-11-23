@@ -1,5 +1,6 @@
 """Check AnyGrasp's local binary, CUDA extensions and required files."""
 import argparse
+from contextlib import redirect_stdout
 import json
 from pathlib import Path
 import sys
@@ -14,7 +15,7 @@ def main():
     parser.add_argument("--feature-id", action="store_true")
     args = parser.parse_args()
     from rebot_grasp.config import load_config
-    from rebot_grasp.grasping.backends._anygrasp_sdk import load_sdk_module
+    from rebot_grasp.grasping.backends._anygrasp_sdk import load_sdk_module, verify_license
 
     report = {}
     try:
@@ -45,8 +46,12 @@ def main():
             report["feature_id"] = module.get_feature_id()
         report["license_config_present"] = (sdk_dir / "license/licenseCfg.json").is_file()
         report["checkpoint_present"] = Path(options["checkpoint"]).is_file()
-        report["license_validated"] = False
         report["model_inference_validated"] = False
+        report["license_validated"] = False
+        if report["license_config_present"]:
+            with redirect_stdout(sys.stderr):
+                verify_license(module, sdk_dir / "license")
+            report["license_validated"] = True
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
     print(json.dumps(report, indent=2))

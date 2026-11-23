@@ -2,7 +2,7 @@
 # Install the software used by the selected project examples, then run the same checker.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-source "$root/scripts/_environment.sh"
+source "$root/scripts/env/_environment.sh"
 action=setup
 env_options "$@"
 cd "$root"
@@ -48,7 +48,7 @@ if ! conda_exe=$(find_conda); then
     conda_exe="$HOME/miniforge3/bin/conda"
 fi
 conda_base=$("$conda_exe" info --base)
-package_helper="$root/scripts/_install_packages.py"
+package_helper="$root/scripts/env/_install_packages.py"
 conda_install() { "$conda_base/bin/python" "$package_helper" conda "$@"; }
 pip_install() { python "$package_helper" pip "$@"; }
 satisfies() { python "$package_helper" satisfies "$@"; }
@@ -81,7 +81,7 @@ if ! satisfies 'pip>=22.2' >/dev/null 2>&1; then
     conda_install -c conda-forge 'pip>=22.2' 'python=3.10'
 fi
 
-probe() { python "$root/scripts/_environment.py" probe "$@"; }
+probe() { python "$root/scripts/env/_environment.py" probe "$@"; }
 works() { probe "$@" >/dev/null 2>&1; }
 has() { python -c "$1" >/dev/null 2>&1; }
 
@@ -119,7 +119,7 @@ assert numpy.__version__.startswith("1.") and ultralytics.__version__ == "8.4.36
     fi
 fi
 
-config_values=$(python scripts/_environment.py settings "$backend")
+config_values=$(python scripts/env/_environment.py settings "$backend")
 declare -A cfg
 while IFS='=' read -r key value; do cfg["$key"]=$value; done <<<"$config_values"
 camera_module=${cfg[camera_module]}
@@ -134,7 +134,7 @@ case "$camera_module" in
     pyrealsense2) { works camera "$camera_module" && satisfies 'pyrealsense2>=2.54'; } || pip_install 'pyrealsense2>=2.54' ;;
 esac
 
-source "$root/scripts/_sdk_assets.sh"
+source "$root/scripts/env/_sdk_assets.sh"
 
 install_yolo() {
     if ! works model "$yolo_weights"; then

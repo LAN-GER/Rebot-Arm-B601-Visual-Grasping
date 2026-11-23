@@ -1,77 +1,79 @@
-# 点云预处理与质量检查
+# Point cloud preprocessing and quality checks
 
-`camera-check` 和 `AnyGraspBackend` 共用 `perception/preprocessing.py`。它只接收 RGB-D、目标 mask 和参数，不连接相机、机械臂，也不加载 AnyGrasp SDK。机械臂继续使用 `robots/actions.py` 中的 B601 动作。
+[简体中文](pointcloud_preprocessing_zh.md)
 
-## 模块边界
+`camera-check` and `AnyGraspBackend` share `perception/preprocessing.py`. It takes an RGB-D frame, target mask, and parameters. The robot uses the B601 actions in `robots/actions.py`.
 
-| 模块 | 负责内容 |
+## Module responsibilities
+
+| Module | Responsibility |
 | --- | --- |
-| `perception/pointcloud.py` | RGB-D 投影、统计离群点过滤、点与颜色及 mask 对齐 |
-| `perception/spatial_filters.py` | 相机系工作范围、固定相机视角的夹爪遮罩 |
-| `perception/cloud_quality.py` | 质量指标、阈值校验、通过或拒绝原因 |
-| `perception/preprocessing.py` | 组合步骤、逐阶段统计；返回数据和报告 |
-| `visualization/segmentation.py` | 检查图片、点云文件和窗口 |
-| `grasping/backends/anygrasp.py` | 质量通过后调用 SDK，转换候选并复核工作范围 |
+| `perception/pointcloud.py` | RGB-D projection, statistical outlier removal, and alignment of points, colors, and masks |
+| `perception/spatial_filters.py` | Camera-frame workspace and fixed-view gripper mask |
+| `perception/cloud_quality.py` | Quality metrics, threshold validation, and pass or rejection reasons |
+| `perception/preprocessing.py` | Processing sequence, per-stage counts, processed data, and report |
+| `visualization/segmentation.py` | Inspection images, point cloud files, and windows |
+| `grasping/backends/anygrasp.py` | SDK inference after quality checks, candidate transforms, and camera workspace validation |
 
-## 处理顺序
+## Processing order
 
-1. 按深度范围筛选，投影到相机光学坐标；X 向右、Y 向下、Z 向前，单位为米。
-2. 用固定视角多边形和深度范围的交集排除可确认的自身夹爪点。
-3. 用相机系三维包围盒约束目标可抓取点。**工作区域外的场景点仍保留给碰撞检测**，仅目标 `region_steering` 被限制。没有指定目标的全场景模式也采用工作区域 mask。
-4. 运行统计离群点过滤，同步更新颜色和目标 mask。
-5. 检查质量。未通过就返回原因，不调用 SDK 推理。目标或工作区域为空时不会退回无限制全场景。
-6. 推理返回后，再检查统一指尖参考点是否位于相机工作范围；机器人基坐标范围与 IK 仍由原有规划流程检查。
+1. Filter by depth and project to camera optical coordinates. X points right, Y down, and Z forward. Distances are in meters.
+2. Exclude identified gripper points that fall inside both the fixed-view polygon and its depth range.
+3. Limit target points with a camera-frame 3D box. **Scene points outside the workspace remain available for collision detection.** The box limits target `region_steering`. Full-scene mode also applies the workspace mask.
+4. Remove statistical outliers and keep the colors and target mask aligned with the remaining points.
+5. Check quality. A failed check returns its reason and skips SDK inference. Empty targets or workspaces also stop this stage.
+6. After inference, check whether the common fingertip reference lies within the camera workspace. The planner checks the robot workspace in base coordinates and solves IK.
 
-工作区域是视觉处理范围，不等同于机械臂可达范围，也不是完整运动路径的碰撞检查。
+The camera workspace bounds visual processing. Robot reachability and motion-path collisions require separate checks.
 
-## 当前现场参数
+## Field settings
 
-参数位于 `config/backends/anygrasp.yaml`：
+The parameters live in `config/backends/anygrasp.yaml`.
 
-- `workspace_camera`：XYZ 下界 `[-0.25, -0.20, 0.10]`，上界 `[0.25, 0.20, 0.60]`，单位米。
-- `gripper_exclusion`：按现场 `camera-check-F9b4OCbE` 的固定 Gemini 336 视角配置保守的夹爪内部轮廓；只排除 0.05–0.19 米内的点。多边形坐标是归一化图像坐标。
-- `outlier_filter`：20 个近邻，标准差倍率 2.0。
-- `pointcloud_quality`：场景至少 1,000 点；目标至少 300 点；原始目标有效深度比例至少 60%；最终目标保留比例至少 50%；进入离群点步骤后，目标被该步骤剔除的比例至多 20%。
+- `workspace_camera` sets XYZ bounds from `[-0.25, -0.20, 0.10]` to `[0.25, 0.20, 0.60]` meters.
+- `gripper_exclusion` uses a conservative interior outline from the fixed Gemini 336 view in `camera-check-F9b4OCbE`. It excludes points between 0.05 and 0.19 m using polygons in normalized image coordinates.
+- `outlier_filter` uses 20 neighbors and a standard deviation multiplier of 2.0.
+- `pointcloud_quality` requires at least 1,000 scene points, 300 target points, 60% valid depth in the original target mask, and 50% retention of original valid target points. Outlier removal may discard up to 20% of the target points entering that step.
 
-这些是可调整的工程初值，并非抓取成功率保证。夹爪遮罩是**保守的局部自身排除**，不覆盖所有手指位置，不是 CAD 自身碰撞模型。更换安装位置、相机裁剪/分辨率、夹爪形态后，应重新核对遮罩。分辨率不匹配会直接报错，禁止静默缩放；同分辨率下的安装变化仍需人工检查。遮罩深度范围外的物体点会保留。
+Treat these values as tunable starting points. The gripper mask excludes a conservative part of the visible gripper. Review it after moving the mount or changing the image crop, resolution, or gripper shape. A resolution mismatch raises an error. A mounting change at the same resolution still needs a visual check. Object points outside the mask's depth range remain in the cloud.
 
-三个可选过滤项各自设为 `null` 可关闭。`pointcloud_quality: null` 只关闭附加比例和数量阈值，仍拒绝空场景或空目标。不得把画面中未知区域随意扩入夹爪遮罩，以免移除真实物体或障碍物。
+Set any of the three optional filters to `null` to disable it. `pointcloud_quality: null` disables the extra count and ratio thresholds. The pipeline still rejects empty targets and scenes. Confirm that a region belongs to the gripper before adding it to the mask so objects and obstacles remain visible.
 
-## 现场运行与文件
+## Run and inspect results
 
 ```bash
 bash examples/camera_check/run.sh
 ```
 
-仅采集、分割和检查点云，无需授权，不启动机械臂。`examples/camera_check/run.sh --input /absolute/path/frame.npz` 可回放一帧，不开启相机。
+This example captures and segments an RGB-D frame and checks its point cloud. It needs no AnyGrasp license and does not move the arm. Use `examples/camera_check/run.sh --input /absolute/path/frame.npz` to replay one frame without a camera.
 
-每次创建新的 `outputs/camera-check/run-*/result`，保存：
+Each run creates a new `outputs/camera-check/run-*/result` directory.
 
-| 文件 | 内容 |
+| File | Contents |
 | --- | --- |
-| `frame.npz` / `color.png` | 原始 RGB-D / 彩色图 |
-| `segmentation.png` / `mask-*.png` | 原始检测实例，便于对照 |
-| `preprocessing.png` | 绿色为过滤后目标；紫色为移除的自身点；灰色为工作区外或无有效深度；左上角为质量结果 |
-| `gripper_exclusion.png` | 本帧实际命中夹爪轮廓及深度范围的像素 |
-| `eligible_target.png` | 最终可用于目标引导的像素 |
-| `pointcloud_raw.npz` / `pointcloud.npz` | 预处理前后点云；点、颜色、目标 mask 一一对应 |
-| `inspection.json` | 每阶段数量、参数、质量阈值、指标和拒绝原因 |
+| `frame.npz` / `color.png` | Original RGB-D frame and color image |
+| `segmentation.png` / `mask-*.png` | Original detection instances for comparison |
+| `preprocessing.png` | Filtered target in green, excluded gripper points in purple, and out-of-workspace pixels or missing depth in gray. Quality appears at the top left. |
+| `gripper_exclusion.png` | Pixels that intersect the gripper polygon and depth range in this frame |
+| `eligible_target.png` | Final pixels eligible for target steering |
+| `pointcloud_raw.npz` / `pointcloud.npz` | Clouds before and after processing, with aligned points, colors, and target masks |
+| `inspection.json` | Per-stage counts, parameters, thresholds, metrics, and rejection reasons |
 
-检查窗口显示预处理结果，按 Q/Esc 后显示点云。退出码 0 表示通过质量阈值，2 表示检测/质量未通过，1 表示配置或运行错误。任何结果都不是 AnyGrasp 推理或真机抓取成功证明。
+The inspection window displays preprocessing results. Press **Q** or **Esc** to open the cloud view. Exit code `0` means the quality checks passed, `2` means detection or quality checks failed, and `1` means a configuration or runtime error. Use actual AnyGrasp inference and a separate robot trial to verify grasping.
 
-`inspection.json` 的 `preprocessing.counts` 区分夹爪移除、工作区排除与离群点剔除。顶层 `removed_selected_point_count` 是各步骤合计，不能全部理解为离群点数量。`valid_depth_ratio` 的分母是原始目标 mask 像素数；`retained_ratio` 的分母是原始目标有效深度点数；`outlier_ratio` 的分母是经过夹爪和工作区筛选、即将进入离群点过滤的目标点数。全场景模式下用全部图像像素作为原始区域。
+In `inspection.json`, `preprocessing.counts` tracks removals by the gripper mask, workspace filter, and outlier step. The top-level `removed_selected_point_count` sums all removals. `valid_depth_ratio` divides by the original target-mask pixel count. `retained_ratio` divides by the original count of valid target depth points. `outlier_ratio` divides by the target point count immediately before outlier removal. Full-scene mode uses all image pixels as the original region.
 
-实际推理保存的 `result.json` 包含同样的 `pointcloud_report`。质量失败状态为 `pointcloud_rejected`，后续不会生成或执行抓取计划。指定目标未检测到仍使用 `target_not_found`。
+Inference saves the same `pointcloud_report` in `result.json`. A quality failure produces `pointcloud_rejected` and stops grasp planning and execution. A missing requested target produces `target_not_found`.
 
-## 拒绝原因
+## Rejection reasons
 
-| 代码 | 意义 |
+| Code | Meaning |
 | --- | --- |
-| `target_not_found` | 未检测到指定目标 |
-| `insufficient_scene_points` | 场景点数不足 |
-| `insufficient_target_points` | 目标或可抓取区域点数不足 |
-| `insufficient_valid_depth` | 原始目标有效深度比例不足 |
-| `excessive_region_removal` | 过滤后目标保留比例不足 |
-| `excessive_outliers` | 目标离群点比例过高 |
+| `target_not_found` | The requested target was absent |
+| `insufficient_scene_points` | Too few scene points |
+| `insufficient_target_points` | Too few points in the target or grasp region |
+| `insufficient_valid_depth` | Too little valid depth in the original target mask |
+| `excessive_region_removal` | Too few target points remain after filtering |
+| `excessive_outliers` | Outlier removal discarded too much of the target |
 
-深度孔洞不自动补全。质量通过也可能存在局部边缘误差和遮挡，需要结合图像复核。
+Depth holes remain unfilled. Visual inspection can reveal local edge errors and occlusion even when quality checks pass.

@@ -1,9 +1,11 @@
-# GraspNet 真机抓取
+# GraspNet robot grasping
 
-相机、GPU、机械臂，启动会使能并进入准备位。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+This example uses a camera, GPU, and robot. It enables the arm and moves it to the ready pose on startup. Run from the repository root.
 
 ```bash
 bash examples/graspnet_grasp/run.sh --help
 ```
 
-运行前准备 GraspNet-Baseline、权重和手眼矩阵。G 推理并执行候选。使用 `--dry-run` 时仍会进入准备位，需要仅查看候选时请运行[GraspNet 相机预览](../graspnet_camera/README.md)。
+Set up GraspNet-Baseline, model weights, and the hand–eye matrix before running. Press **G** to infer and execute a candidate. The arm still moves to the ready pose with `--dry-run`. To inspect candidates with the camera only, use the [GraspNet camera preview](../graspnet_camera/README.md).

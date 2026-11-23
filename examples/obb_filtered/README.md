@@ -1,12 +1,14 @@
-# 过滤版 OBB 对照
+# Filtered OBB comparison
 
-从仓库根目录运行。第一条命令开启相机预览，第二条会让机械臂进入准备位。在窗口按 **G** 生成快照，执行模式下会从过滤后的可达候选中选择抓取。
+[简体中文](README_zh.md)
+
+Run from the repository root. The first command opens the camera preview. The second moves the arm to the ready pose. Press **G** in the window to capture a snapshot. Execution mode selects a reachable candidate from the filtered results.
 
 ```bash
 bash examples/obb_filtered/run.sh
 bash examples/obb_filtered/run.sh --execute
 ```
 
-如果夹取深度不足，在执行命令末尾加 `--insertion-depth-mm <毫米数>`。这个值覆盖本轮沿工具接近方向的额外下探量，默认值为 0 mm。[后端配置](../../config/backends/obb_filtered.yaml)
+If the grip is too shallow, append `--insertion-depth-mm <millimeters>` to the execution command. This overrides the extra travel along the tool's approach axis for that run. The default is 0 mm. [Backend configuration](../../config/backends/obb_filtered.yaml)
 
-主窗口并排显示同一帧的原始和过滤结果。默认输出在 `outputs/obb-filtered/run-*/result/`。[窗口、算法与输出](../../docs/obb_filtered.md)
+The main window displays the raw and filtered results for the same frame side by side. The default output is `outputs/obb-filtered/run-*/result/`. [Windows, algorithm, and output](../../docs/obb_filtered.md)

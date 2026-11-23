@@ -1,9 +1,11 @@
-# GraspNet 相机预览
+# GraspNet camera preview
 
-相机和 GPU。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+This example uses a camera and GPU. Run from the repository root.
 
 ```bash
 bash examples/graspnet_camera/run.sh
 ```
 
-使用 GraspNet-Baseline、配置指定的权重与相机，显示候选和点云。本机尚未安装基线模型。[安装依赖](../../docs/sdk_setup.md)
+GraspNet-Baseline uses the camera and weights selected in the configuration and displays candidates and point clouds. [Set up dependencies](../../docs/sdk_setup.md)

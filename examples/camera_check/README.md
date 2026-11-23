@@ -1,9 +1,11 @@
-# 分割与点云质量检查
+# Segmentation and point cloud quality check
 
-采集一帧或回放录制，无机械臂动作。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+Capture one frame or replay a recording without moving the robot. Run from the repository root.
 
 ```bash
 bash examples/camera_check/run.sh --target-class "yellow banana"
 ```
 
-显示分割与点云，保存 `inspection.json` 和过滤前后的像素、点云。可加 `--input /path/to/frame.npz` 回放。无图形桌面可直接使用 `bash scripts/run_python.sh -m rebot_grasp camera-check --input /path/to/frame.npz --output outputs/check`。[质量指标](../../docs/pointcloud_preprocessing.md)
+The example displays segmentation and point clouds and saves `inspection.json`, the pixel masks, and the point clouds before and after filtering. Append `--input /path/to/frame.npz` to replay a frame. On a headless machine, use `bash scripts/run_python.sh -m rebot_grasp camera-check --input /path/to/frame.npz --output outputs/check`. [Quality metrics](../../docs/pointcloud_preprocessing.md)

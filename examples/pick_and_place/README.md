@@ -1,9 +1,11 @@
-# 香蕉放入盒子
+# Place a banana in a box
 
-原版交互流程，启动会使能并移动到准备位。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+The original interactive workflow enables the arm and moves it to the ready pose on startup. Run from the repository root.
 
 ```bash
 bash examples/pick_and_place/run.sh --help
 ```
 
-检测香蕉与盒子并执行放置流程。去掉 `--help` 后会连接机械臂，`--dry-run` 只跳过抓放序列。
+The example detects a banana and a box, then runs the placement sequence. Omit `--help` to connect to the robot. `--dry-run` skips the pick-and-place sequence itself.

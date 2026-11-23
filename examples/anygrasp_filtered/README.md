@@ -1,32 +1,34 @@
-# AnyGrasp 点云过滤对照
+# AnyGrasp point cloud filtering comparison
 
-当前桌面词表为 `pen`（笔）、`orange`（橙子）和 `yellow banana`（香蕉）。窗口显示每个检测实例的类别和置信度。绿色框表示本轮抓取目标，蓝色框表示其他识别结果。默认抓香蕉，可用 `--target-class pen` 或 `--target-class orange` 切换目标。预览逐实例使用各自的 mask 调用 AnyGrasp。白线为当前目标的候选，黄色线为其他物体的候选，Z 表示候选中心的相机深度。点云质量被拒或无有效候选时会在实例旁标记原因。按图像窗口中的 **1 选笔、2 选橙子、3 选香蕉**（对应配置中的词表顺序）。选中后按 **G** 重新采图，执行模式只抓当前类别。目标缺失时跳过此次抓取。
+[简体中文](README_zh.md)
 
-同一张 RGB-D、同一个选中实例的分割和同一个 AnyGrasp 模型产生两幅图。左侧 RAW REFERENCE 使用深度范围内的原始点云及目标 mask；右侧 FILTERED 使用夹爪遮罩、相机工作区、离群点过滤和质量检查。两侧使用相同的模型、碰撞检测、宽度与分数限制，以及额外下探量。原有 AnyGrasp 示例仍使用自己的配置。
+The current tabletop vocabulary is `pen`, `orange`, and `yellow banana`. The window shows the class and confidence for each detected instance. The green box marks the current target, and blue boxes mark other detections. The default target is the banana. Use `--target-class pen` or `--target-class orange` to switch it. The preview runs AnyGrasp for each instance using its mask. White lines show current target candidates, yellow lines show other candidates, and Z gives the depth of the candidate center in camera coordinates. The window labels instances rejected by point cloud quality checks or without a valid candidate. Press **1** for pen, **2** for orange, or **3** for banana in the image window. The keys follow the configured vocabulary order. Press **G** to capture a new frame. Execution mode grasps the selected class and skips the action if the target is absent.
 
-白线连接投影到图像上的两指位置，红点表示抓取中心。等待按 G 时显示各自最高分的有效候选。每个检测实例通常要做两次模型推理，底部帧龄表示画面的滞后。辅助窗口显示过滤点云和分割/深度，紫色标出排除的夹爪像素。
+Both panels use the same RGB-D frame, the same selected instance, and the same AnyGrasp model. **RAW REFERENCE** uses the raw points and target mask within the depth range. **FILTERED** applies the gripper mask, camera workspace, outlier removal, and quality checks. Both sides share model, collision detection, width and score limits, and extra insertion depth. The standard AnyGrasp example uses its own configuration.
 
-## 启动
+A white line connects the projected fingertips and a red dot marks the grasp center. While waiting for **G**, each side shows its highest-scoring valid candidate. Each detected instance typically takes two inference calls. Frame age is shown at the bottom. The auxiliary windows show the filtered cloud and segmentation/depth, with excluded gripper pixels in purple.
 
-从工程根目录运行。第一行仅用相机预览。第二行启动后机械臂会进入准备位，按 G 重新采集一帧，从右侧候选中选取通过工作区和 IK 检查的抓取。质量拒绝或无可达抓取时跳过该次动作。完成后自动恢复预览，Q/Esc 结束会话。
+## Run the example
+
+Set up the [AnyGrasp license and detection weights](../../README.md#anygrasp-license-and-detection-weights) before starting. Run from the repository root. The first command starts the camera preview. The second moves the arm to the ready pose. Press **G** to capture a new frame and select a right-panel candidate that passes workspace and IK checks. If quality checks fail or no candidate is reachable, the example skips the grasp. The preview resumes automatically after execution. Press **Q** or **Esc** to end the session.
 
 ```bash
 bash examples/anygrasp_filtered/run.sh
 bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
 
-如果夹取深度不足，在执行命令末尾加 `--insertion-depth-mm <毫米数>`。这个值覆盖本轮沿工具接近方向的额外下探量，默认值为 5 mm。[后端配置](../../config/backends/anygrasp_filtered.yaml)
+If the grip is too shallow, append `--insertion-depth-mm <millimeters>` to the execution command. This overrides extra travel along the tool's approach axis for that run. The default is 5 mm. [Backend configuration](../../config/backends/anygrasp_filtered.yaml)
 
-使用 `--single-window` 仅显示左右对照。当前检测置信度阈值为 0.30。[现场配置](../../config/anygrasp_filtered.yaml)
+Use `--single-window` to show only the side-by-side comparison. The current detection confidence threshold is 0.30. [Runtime configuration](../../config/anygrasp_filtered.yaml)
 
-## 回放和结果
+## Replay and results
 
 ```bash
 bash examples/anygrasp_filtered/run.sh --input /path/to/snapshot-001/frame.npz
 ```
 
-离线回放用录制的 RGB-D 重新检测目标，在 GPU 上运行同一套对照。默认写入 `outputs/anygrasp-filtered/run-*/result/`，终端会打印本轮目录。也可用 `--output` 指定新的目录。实时会话每次按 G 保存一个 `snapshot-NNN/`。
+Offline replay redetects targets in recorded RGB-D data and runs the same comparison on the GPU. Output goes to `outputs/anygrasp-filtered/run-*/result/` by default, and the terminal prints the run directory. Use `--output` to specify a new directory. Each press of **G** in a live session saves a `snapshot-NNN/`.
 
-- `comparison.png` 和 `comparison.json` 给出两侧显示的抓取、相机系中心位移、夹爪宽度差与无向开合轴夹角。两次模型推理可能选中不同的抓取位置，单帧差值也包含候选排序的影响。
-- `diagnostics.png`、`pointcloud_raw.npz`、`pointcloud.npz` 和各 mask 可用于复核分割、夹爪排除和离群点。未检出目标时保存空对照。
-- `result.json` 记录过滤后的候选、计划和质量原因。实际执行时右图标注选中的可达候选，`execution.json` 记录动作。
+- `comparison.png` and `comparison.json` show both grasps, the change in center in camera coordinates, the width difference, and the angle between the undirected opening axes. The two inference calls may select different grasps, so candidate ranking can contribute to the single-frame difference.
+- Review segmentation, gripper exclusion, and outliers using `diagnostics.png`, `pointcloud_raw.npz`, `pointcloud.npz`, and the masks. An empty comparison is saved if the target is absent.
+- `result.json` records the filtered candidates, plan, and quality result. During execution the right panel marks the selected reachable candidate, and `execution.json` records the action.

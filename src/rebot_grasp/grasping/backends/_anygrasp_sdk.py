@@ -28,6 +28,16 @@ def load_sdk_module(sdk_dir):
     return module
 
 
+def verify_license(module, directory):
+    result = module.check_license(str(directory))
+    if isinstance(result, tuple):
+        passed, reason = result
+    else:
+        passed, reason = result, "See the license status reported by the SDK."
+    if passed is not True:
+        raise RuntimeError(f"The AnyGrasp SDK rejected the license. {reason}")
+
+
 def _worker(connection, sdk_dir, checkpoint, max_width, gripper_height):
     try:
         os.chdir(sdk_dir)  # SDK-relative license lookup, confined to this process.

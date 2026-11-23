@@ -1,3 +1,5 @@
-# 手眼标定结果
+# Hand–eye calibration results
 
-每个相机安装位置使用独立的手眼矩阵。当前 B601-RS 的 Gemini 336 使用 `orbbec_gemini336/hand_eye.npz`。标定文件由设备现场生成，Git 忽略这些文件。运行配置中的 `calibration.hand_eye_path` 相对于配置文件所在目录。平移使用米。
+[简体中文](README_zh.md)
+
+Use a separate hand–eye matrix for each camera mounting position. The Gemini 336 on the current B601-RS uses `orbbec_gemini336/hand_eye.npz`. Generate the calibration files on the actual hardware. Git ignores these files. The runtime setting `calibration.hand_eye_path` is relative to the configuration file. Translations are in meters.

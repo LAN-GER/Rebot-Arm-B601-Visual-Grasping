@@ -1,9 +1,11 @@
-# OBB 相机预览
+# OBB camera preview
 
-只用相机，或离线回放。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+Use the camera or replay a recording. Run from the repository root.
 
 ```bash
 bash examples/obb_preview/run.sh
 ```
 
-显示轮廓短轴和抓取估计。可用 `--input /path/to/frame.npz --snapshot outputs/obb.png` 在录制帧上导出单张叠加图。
+The preview shows the contour's short axis and grasp estimate. Use `--input /path/to/frame.npz --snapshot outputs/obb.png` to export one overlay from a recorded frame.

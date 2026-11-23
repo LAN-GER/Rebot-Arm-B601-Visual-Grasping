@@ -16,14 +16,9 @@ yolo = ["ultralytics==8.4.36"]
 realsense = ["pyrealsense2>=2.54"]
 orbbec = ["pyorbbecsdk2>=2.1"]
 visualization = ["open3d>=0.17"]
-dev = ["pytest>=7"]
 
 [project.scripts]
 rebot-grasp = "rebot_grasp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-ra"

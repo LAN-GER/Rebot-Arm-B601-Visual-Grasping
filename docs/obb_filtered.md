@@ -1,100 +1,100 @@
-# OBB 点云过滤对照版
+# OBB point cloud filtering comparison
 
-本示例对同一张图里的香蕉计算两套 OBB 结果，便于检查夹爪遮罩和离群点过滤对执行位姿的影响。依赖 YOLO、OpenCV 和点云处理模块。
+[简体中文](obb_filtered_zh.md)
 
-## 启动
+This example computes two OBB estimates for a banana in the same frame so you can inspect how gripper exclusion and outlier removal affect the executed pose. It uses YOLO, OpenCV, and the point cloud processing modules.
 
-仅相机预览与估计，不连接机械臂：
+## Run the example
+
+Use this command to preview with the camera only.
 
 ```bash
 bash examples/obb_filtered/run.sh
 ```
 
-真机试验，启动会使能并移动到 B601 预备位：
+Use this command for a robot trial. It enables the B601 and moves it to the ready pose on startup.
 
 ```bash
 bash examples/obb_filtered/run.sh --execute
 ```
 
-- G：暂停后台预览推理，单独采集一张新帧、生成过滤前后 OBB 对照；在 `--execute` 模式执行过滤后的候选，完成后自动恢复实时预览。
-- R：恢复相机预览。
-- Q/Esc：退出；执行模式仍按 B601 原版释放夹爪、回零。
+- **G** pauses background inference and captures a fresh frame for the comparison. With `--execute`, it runs the filtered candidate and resumes the live preview afterwards.
+- **R** resumes the camera preview.
+- **Q** or **Esc** ends the session. In execution mode the B601 releases the gripper and returns to zero using the original procedure.
 
-默认打开三个窗口：
+Three windows open by default.
 
-1. OBB 左右对照：左侧原始参考，右侧过滤后的执行候选。
-2. 点云窗口：过滤后的场景，绿色为选中目标，橙色为候选夹爪。可用 Open3D 的鼠标操作旋转、缩放。
-3. 分割／深度诊断：绿色保留目标、黄色排除的目标像素、紫色夹爪排除区域；右侧为米制深度热图，黑色为无效深度，并显示点数与质量指标。
+1. The OBB comparison shows the raw reference on the left and the filtered execution candidate on the right.
+2. The point cloud window shows the filtered scene, selected target in green, and candidate gripper in orange. Use the Open3D mouse controls to pan, rotate, or zoom.
+3. The segmentation and depth diagnostics show retained target pixels in green, excluded target pixels in yellow, and gripper exclusions in purple. The right panel displays depth in meters, with invalid depth in black, and shows point counts and quality metrics.
 
-预览状态下持续进行 YOLO 检测和点云过滤，不需要按 G。主窗口显示香蕉检测框、类别与置信度，并显示实时推理速度和帧龄；三个窗口使用同一张已完成处理的帧。后台只保留一个在途任务，忙碌时丢弃中间帧，避免队列积压；刷新速度受 YOLO 和点云处理耗时影响，不等同于相机 30 fps。
+Live preview continuously runs YOLO and filters the point cloud. The main window shows the banana box, class, confidence, processing rate, and frame age. All three windows use the same processed frame. While processing one frame, the background worker drops intermediate frames to avoid a backlog. The refresh rate depends on processing time.
 
-G/R/Q 请在图像窗口操作；点云窗口关闭只关闭该视图，不发送机械臂命令。G 使用新采集帧，不复用后台预览结果；预览计算不读取机器人状态、不求机器人 IK、不执行动作，也不逐帧写盘。没有选中目标时清除上一帧点云，避免误看旧结果。B601 动作执行期间保持执行帧，动作返回后自动继续实时预览和窗口交互。
+Use **G**, **R**, and **Q** in the image window. Closing the point cloud window closes that view only. **G** uses a new capture. Preview computes estimates without reading robot state, solving robot IK, moving the arm, or saving every frame. When no target is selected, the cloud window clears stale points. During execution the windows show the execution frame, then resume live preview when the action returns.
 
-追加 `--single-window` 可只保留原来的 OBB 对照窗口。离线 `--input` 模式不弹出窗口，仍保存诊断图片。
-
-预览模式不执行动作。`--execute` 和 `--input` 不能同时使用。离线回放示例：
+Use `--single-window` to display only the OBB comparison. Offline `--input` mode saves diagnostic images without opening windows. Use `--input` and `--execute` in separate runs.
 
 ```bash
 bash examples/obb_filtered/run.sh \
   --input /path/to/frame.npz
 ```
 
-## 过滤如何影响 OBB
+## How filtering affects OBB
 
-使用本工程的对齐目标 mask，调用保留的 B601 `estimate_grasp`，保留其最小外接矩形、短轴截面优化、深度分位数和 TCP 轴转换。
+The project passes the aligned target mask to the original B601 `estimate_grasp` routine. It retains the minimum-area rectangle, short-axis cross-section refinement, depth quantile, and TCP axis conversion.
 
-同一张 RGB-D、同一次检测选出的同一个目标同时进入两条估计分支：
+The same RGB-D frame and selected detection feed both estimates.
 
-1. 左侧 **RAW REFERENCE**：使用原始目标 mask 和深度，只保存对照结果，从不执行。
-2. 右侧 **FILTERED**：先经过夹爪排除、工作区域、离群点过滤和质量检查，将保留点投回原像素。**完整二维分割轮廓继续用于 OBB 外接矩形、中心、短轴方向和像素宽度；点云过滤只决定哪些目标深度参与分位数估计及质量判定。** 不再用深度有效区域重新拟合轮廓。蓝框、红点和白线分别表示外接矩形、抓取中心和夹爪开合线。绿色表示参与深度估计的目标点，紫色为夹爪排除点。
+1. The left **RAW REFERENCE** panel uses the raw mask and depth. It saves the reference estimate for comparison.
+2. The right **FILTERED** panel applies gripper exclusion, workspace limits, outlier removal, and quality checks. It projects retained points back to the source pixels. **The full 2D segmentation contour supplies the OBB rectangle, center, short-axis direction, and pixel width. Filtering selects the target depths used for the depth quantile and the quality check.** Blue boxes mark rectangles, red dots mark grasp centers, and white lines mark the opening axis. Green indicates points used for depth estimation. Purple indicates gripper exclusions.
 
-当前轮廓算法标记为 `obb_full_mask_filtered_depth_v2`，写入每次 `comparison.json`。左右二维中心和方向应保持一致，三维位置和米制宽度仍可能随深度估计变化。额外下探量默认仍为 0，夹持力和 B601 动作参数不变。
+The algorithm identifier `obb_full_mask_filtered_depth_v2` appears in each `comparison.json`. Both panels should agree on the 2D center and direction. Depth can still change the 3D center and metric width. The default extra insertion depth is 0 mm.
 
-当现场确认只夹到目标顶部时，可显式指定小步下探试验，例如：
+When the fingers reach only the top of the object, test a small insertion adjustment.
 
 ```bash
 bash examples/obb_filtered/run.sh --execute --insertion-depth-mm 5
 ```
 
-此参数表示沿工具接近轴 +X 额外前进 5 mm，不是直接修改基坐标 Z。补偿在候选生成时只加一次，预抓取位置仍相对于最终抓取位置后退 80 mm，B601 运动时长与夹持力不变。调整后的候选仍检查工作区域和 IK。去掉该参数即恢复配置中的值（默认 0）。
+This example adds 5 mm along tool +X. The pipeline applies the offset once, keeps the pre-grasp 80 mm back from the final candidate, and still checks the workspace and IK. The setting affects insertion distance. B601 motion timing and gripping force use their own settings. Omit the flag to use the configured value, which defaults to 0 mm.
 
-同帧左右 OBB 数值对照仍比较表面估计，额外下探在右图标注；实际执行候选为 `comparison.json` 的 `candidate_position_m`，偏移为 `insertion_offset_camera_m`，3D 夹爪候选也使用补偿后位置。实际参数保存在 `session.json`。桌面点云拟合的间隙是估计值，不等同于实测指尖间隙，不自动据此增加下探。
+The side-by-side comparison still uses the surface estimates. The right panel marks extra insertion. In `comparison.json`, `candidate_position_m` gives the execution position and `insertion_offset_camera_m` gives the offset. The 3D gripper uses the adjusted pose. `session.json` records the active parameters. The fitted tabletop clearance is an estimate, and the pipeline never uses it to increase insertion automatically.
 
-深度孔洞不会被填充。B601 的中心邻域深度回退只能看到已保留的目标深度，不能重新引入被过滤的夹爪/背景。质量不通过、空目标或无有效 OBB 时，不回退执行左侧结果。
+Depth holes remain unfilled. B601's fallback for finding depth near the center only uses retained target depths. The execution path rejects failed quality checks, empty targets, and invalid OBBs.
 
-这个 RAW 对照是“同一检测输入、不加点云过滤”的 B601 几何估计，不是把历史运行的结果当作同场景对照。新入口默认阈值 0.30、目标 `yellow banana`，历史原版入口使用其自己的配置（之前为阈值 0.50、最高置信度类别）。因此应优先比较同一帧的左右两侧。
+The left reference uses B601 geometry with the same detection as the right panel. This entry point defaults to confidence 0.30 and target `yellow banana`. The original entry point uses its own settings, which previously used 0.50 and selected the class with highest confidence. Compare estimates from the same frame.
 
-## 配置和控制边界
+## Configuration and control
 
-- `config/obb_filtered.yaml`：相机、YOLO、机器人、标定路径和规划范围。
-- `config/backends/obb_filtered.yaml`：OBB 深度分位数 0.5、点云过滤和质量阈值；与当前 AnyGrasp 预处理采用相同初始值，独立调参。
-- `grasping/backends/obb_filtered.py`：纯计算后端，不读取机器人和相机。
-- `pipeline/obb_filtered.py`：保存对照结果，调用共享 B601 会话。
-- `pipeline/live_session.py`：公共实时流程；AnyGrasp 的原入口保留兼容导出。
-- `visualization/obb_comparison.py`：图像与点云导出。
+- `config/obb_filtered.yaml` configures the camera, YOLO, robot, calibration path, and planning workspace.
+- `config/backends/obb_filtered.yaml` configures the OBB depth quantile of 0.5, filtering, and quality thresholds. Initial preprocessing values match AnyGrasp and can be tuned independently.
+- `grasping/backends/obb_filtered.py` computes the estimates from inputs.
+- `pipeline/obb_filtered.py` saves results and calls the shared B601 session.
+- `pipeline/live_session.py` provides the shared live workflow. Existing AnyGrasp entry points retain compatibility exports.
+- `visualization/obb_comparison.py` exports images and point clouds.
 
-运动通过既有 `B601Session` 调用 B601 `robots/actions.py` 的 `move_ready` 和 `execute_grasp`，保持原版 2 秒预抓取、1.5 秒下降、夹持及返回预备位。夹爪判定逻辑、力矩与轨迹参数未修改。额外插入深度默认 0，可通过上述参数显式设置，不叠加通用 OBB 后端的 15 mm 偏移。
+`B601Session` calls `move_ready` and `execute_grasp` in `robots/actions.py`. The sequence uses a 2-second pre-grasp and a 1.5-second descent, then closes the gripper and returns to ready. The filtered backend's insertion setting defaults to 0 mm and overrides placement independently of the standard OBB backend's 15 mm offset.
 
-执行前使用已有的宽度、基坐标工作范围和 IK 筛选，不改变运动轨迹。OBB 在等待用户按 G 的静止状态下采图并读取一次 TCP 位姿，没有额外添加编码器稳定阈值；该采集不等同于硬件时钟同步。过滤后的 OBB 仍不是完整机器人路径碰撞规划。
+Execution checks width, base-frame workspace, and IK. The example captures the image and reads the TCP once while the robot waits at the ready pose. This procedure uses the stationary pose assumption. Hardware timestamp synchronization and full motion-path collision planning are outside the scope of this example.
 
-## 保存结果
+## Saved results
 
-每次启动创建 `outputs/obb-filtered/run-XXXXXXXX/`，终端日志保存到 `console.log`。真实使用的配置、覆盖参数和执行标定矩阵保存在 `result/session.json`。
+Each run creates `outputs/obb-filtered/run-XXXXXXXX/` and saves terminal output to `console.log`. The effective configuration, overrides, and calibration transform are saved in `result/session.json`.
 
-实时模式每次 G 创建 `result/snapshot-NNN/`；离线模式直接写入 `result/`：
+Each press of **G** in live mode creates `result/snapshot-NNN/`. Offline mode saves directly to `result/`.
 
-| 文件 | 内容 |
+| File | Contents |
 | --- | --- |
-| `frame.npz`、`color.png` | 本次 RGB-D、目标 mask，以及可用时的相机到基坐标变换 |
-| `comparison.png` | 同帧过滤前后 OBB 对照 |
-| `diagnostics.png` | 同帧分割、深度和质量指标，与诊断窗口一致 |
-| `comparison.json` | 两套中心、宽度、深度、TCP 姿态及其差值；原始结果仅用于比较 |
-| `target_mask.png`、`eligible_target.png` | 过滤前后目标像素 |
-| `gripper_exclusion.png` | 被夹爪遮罩排除的像素 |
-| `pointcloud_raw.npz`、`pointcloud.npz` | 过滤前后点云 |
-| `result.json` | 最终候选、计划、质量报告和未执行原因 |
-| `execution.json` | 仅发生抓取调用时创建，记录动作调用和夹爪返回值；现场结果默认未知 |
+| `frame.npz`, `color.png` | RGB-D, target mask, and camera-to-base transform when available |
+| `comparison.png` | Raw and filtered OBBs from the same frame |
+| `diagnostics.png` | Segmentation, depth, and quality metrics shown in the diagnostics window |
+| `comparison.json` | Centers, widths, depths, TCP poses, and their differences |
+| `target_mask.png`, `eligible_target.png` | Target pixels before and after filtering |
+| `gripper_exclusion.png` | Pixels excluded by the gripper mask |
+| `pointcloud_raw.npz`, `pointcloud.npz` | Point clouds before and after filtering |
+| `result.json` | Final candidate, plan, quality report, and reason execution was skipped |
+| `execution.json` | Written when a grasp is invoked. Records actions and gripper feedback. The field outcome starts as unknown. |
 
-目标未检测到时也保存该帧与空对照，不复用上一帧的结果。夹爪返回 `object_held: false` 不能直接认定现场空抓：之前已出现实际夹住但软件返回 False 的情况，`field_success` 保持 `null`，等待现场确认。
+If the target is absent, the example saves the new frame and an empty comparison. `object_held: false` is controller feedback. The software has returned it when the fingers held the object. `field_success` remains `null` pending field confirmation.
 
-已用保存的真实相机帧进行离线推理，并通过模拟执行测试。现场试抓中，沿工具 +X 额外下探 5 mm 后操作员观察到夹持改善。
+The example was tested with offline inference on recorded camera frames and simulated execution. In field trials, the operator observed better grips after adding 5 mm along tool +X.

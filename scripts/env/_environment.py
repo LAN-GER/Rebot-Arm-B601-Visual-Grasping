@@ -7,7 +7,7 @@ import subprocess
 import sys
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "config/default.yaml"
 
 
@@ -61,10 +61,13 @@ def model_file(path):
         raise ValueError(f"Incomplete model archive: {path}")
 
 
-def graspnet_checkpoint(path):
+def model_checkpoint(path):
     import torch
     model_file(path)
-    state = torch.load(path, map_location="cpu", weights_only=True)
+    try:
+        state = torch.load(path, map_location="cpu", weights_only=True)
+    except Exception as exc:
+        raise ValueError(f"Cannot read model checkpoint {path}: {exc}") from exc
     if not isinstance(state, dict) or not state.get("model_state_dict"):
         raise ValueError(f"Missing model_state_dict in {path}")
 
@@ -153,7 +156,7 @@ def probe(name, *args):
     if name in ("any_pointnet", "minkowski", "baseline_pointnet", "knn"):
         cuda_probe(name, *args)
     else:
-        {"gsnet": gsnet, "baseline": baseline_model, "checkpoint": graspnet_checkpoint,
+        {"gsnet": gsnet, "baseline": baseline_model, "checkpoint": model_checkpoint,
          "opencv": opencv, "project": project_package, "model": model_file,
          "camera": camera_driver}[name](*args)
 
@@ -238,7 +241,7 @@ def check(backend, robot, summary_dir=None):
             item("AnyGrasp machine license files (see docs/sdk_setup.md)", license_files,
                  Path(sdk) / "grasp_detection/license", user_action=True)
         for path in dict.fromkeys((cfg["any_checkpoint"], cfg["filtered_checkpoint"])):
-            item("AnyGrasp detection checkpoint (provided with authorization)", model_file,
+            item("AnyGrasp detection model weights", model_checkpoint,
                  path, user_action=True)
         if gpu:
             item("AnyGrasp MinkowskiEngine CUDA operator", native, "minkowski")
@@ -246,7 +249,7 @@ def check(backend, robot, summary_dir=None):
     if backend in ("all", "graspnet"):
         sdk = cfg["baseline"]
         item("GraspNet-Baseline SDK and model import", native, "baseline", sdk)
-        item("GraspNet checkpoint", graspnet_checkpoint, cfg["checkpoint"])
+        item("GraspNet checkpoint", model_checkpoint, cfg["checkpoint"])
         if gpu:
             item("GraspNet PointNet2 CUDA operator", native, "baseline_pointnet", sdk)
             item("GraspNet kNN CUDA operator", native, "knn", sdk)

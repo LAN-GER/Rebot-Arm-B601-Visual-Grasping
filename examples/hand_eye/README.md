@@ -1,11 +1,13 @@
-# 手眼标定
+# Hand–eye calibration
 
-标记检查只用相机，自动轨迹会移动机械臂。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+The marker check uses the camera only. Automatic calibration moves the robot. Run from the repository root.
 
 ```bash
 bash examples/hand_eye/run.sh --check-marker
 ```
 
-按实际打印后的黑色标记边长设置 `calibration.aruco.marker_length_m`。本机使用 0.100 m、ID 0。按 100% 比例打印后实测边长。[100 mm 打印板](boards/aruco_100mm.pdf) · [30 mm 打印板](boards/aruco_30mm.pdf)
+Set `calibration.aruco.marker_length_m` to the actual printed length of the black marker edge. The current setup uses a 0.100 m marker with ID 0. Print at 100% scale and measure the edge. [100 mm board](boards/aruco_100mm.pdf) · [30 mm board](boards/aruco_30mm.pdf)
 
-去掉 `--check-marker` 会运行自动轨迹并采样；`--manual` 使用手动引导。求解成功将更新该相机的 `config/calibration/<相机型号>/hand_eye.npz`。要单独保存标定候选，可用[稳定采样标定](../stationary_calibration/README.md)。
+Omit `--check-marker` to run the automatic sampling trajectory or add `--manual` for manual guidance. A successful solve updates `config/calibration/<camera_type>/hand_eye.npz` for that camera. To save a separate candidate matrix, use [hand–eye calibration with stationary samples](../stationary_calibration/README.md).

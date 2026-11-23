@@ -1,9 +1,11 @@
-# 7 号电机张爪诊断
+# Motor 7 gripper-opening diagnostic
 
-仅连接并驱动 B601-RS 的 7 号夹爪电机。从仓库根目录运行。
+[简体中文](README_zh.md)
+
+This example connects to and drives only gripper motor 7 on the B601-RS. Run from the repository root.
 
 ```bash
 bash examples/gripper_check/run.sh --controller-open
 ```
 
-使用控制器张爪逻辑复现单次张开。`--open` 选择单电机 MIT 测试。两者均会实际驱动夹爪。终端显示张爪结果或故障原因。
+Use `--controller-open` for one open command through the controller or `--open` for a single-motor MIT test. Both commands move the gripper. The terminal reports the result or fault.

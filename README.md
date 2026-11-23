@@ -13,7 +13,7 @@ cd Rebot-Arm-B601-Visual-Grasping
 
 Set `camera.type` to your camera model. The default is `orbbec_gemini336` at 640×480 and 30 FPS. Use `camera.serial` to select among cameras of the same model. [Default configuration](config/default.yaml)
 
-Choose one installation method. [Automatic setup](#1-automatic-environment-and-sdk-setup) · [Manual setup](#2-manual-environment-and-sdk-setup)
+Choose one installation method. [Automatic setup](#1-automatic-environment-and-sdk-setup) · [Manual setup](#2-manual-environment-and-sdk-setup) · [Script entry points](#script-entry-points)
 
 ## 1. Automatic environment and SDK setup
 
@@ -39,6 +39,8 @@ Missing packages and SDKs install automatically. When an existing package or dep
 The checker lists ready and missing or unusable packages, SDKs and runtime files for the selected backends below the final `----`. It lists files you must supply and checks it could not run separately.
 
 On a fresh machine the first check normally reports missing components. `[MANUAL]` marks files you supply, such as the machine-specific AnyGrasp license, its detection weights and the hand–eye matrix. Exit code `3` means only manual items remain. Supply the listed files and rerun the same check. If the GraspNet download hits a quota, pass `--checkpoint-file /path/to/checkpoint-rs.tar` to setup, or set `GRASPNET_CHECKPOINT_URL` to a trusted direct download. Interrupted installations can be rerun. [AnyGrasp authorization and file locations](docs/sdk_setup.md) · [Hand–eye calibration](examples/hand_eye/README.md)
+
+For AnyGrasp, run `bash scripts/anygrasp_license.sh`. Choose `1` to read the machine feature ID or `2` to configure the license and detection weights from the delivery directory. [AnyGrasp license and detection weights](#anygrasp-license-and-detection-weights)
 
 If setup installed Miniforge, first run `source ~/miniforge3/etc/profile.d/conda.sh` in your terminal. Run `conda activate rebot` before launching an example, then continue to [section 3](#3-run-the-examples).
 
@@ -130,10 +132,37 @@ python -m pip install --no-build-isolation --no-deps ./sdk/anygrasp_sdk/pointnet
     --blas_include_dirs="$CONDA_PREFIX/include" --blas_library_dirs="$CONDA_PREFIX/lib" &&
   python -m pip install --no-deps dist/*.whl
 )
-python examples/anygrasp/check_sdk.py --feature-id
 ```
 
-Use the reported `feature_id` to request the license and detection weights. Extract the full license directory, including `licenseCfg.json`, into `sdk/anygrasp_sdk/grasp_detection/license/`. Place the weights at `sdk/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar`. Run `bash scripts/check_env.sh --backend anygrasp` to check the files and GPU operators. The filtered preview or an offline replay verifies licensed inference. [Official registration](https://github.com/graspnet/anygrasp_sdk/tree/main/license_registration) · [Preview and replay commands](examples/anygrasp_filtered/README.md)
+#### AnyGrasp license and detection weights
+
+1. **Read the machine feature ID.** Run the command on the machine that will run inference, using its deployment network adapter. In the interactive menu, option `1` does the same. Submit the printed `feature_id` to request the license and detection checkpoint. [Official AnyGrasp registration](https://github.com/graspnet/anygrasp_sdk/tree/main/license_registration)
+
+   ```bash
+   bash scripts/anygrasp_license.sh 1
+   ```
+
+2. **Install both files from the delivery directory.** Keep the issued license ZIP or extracted license folder alongside `checkpoint_detection.tar`. Run the command below or choose option `2` in the menu and enter the directory path.
+
+   ```text
+   delivery/
+   ├── license.zip
+   └── checkpoint_detection.tar
+   ```
+
+   ```bash
+   bash scripts/anygrasp_license.sh 2 "/path/to/delivery"
+   ```
+
+   The SDK validates the license before installation. The script checks that the detection checkpoint can be read and uses the destinations from `config/backends/anygrasp.yaml`. By default the license goes to `sdk/anygrasp_sdk/grasp_detection/license/` and the weights go to `sdk/anygrasp_sdk/grasp_detection/log/checkpoint_detection.tar`. For a separate filtered-backend checkout or checkpoint path, pass `--backend anygrasp_filtered` before `2`.
+
+3. **Check the result.** The terminal summary below `----` reports the license and weights. If only the license is supplied and the weights are still missing, the script reports `[PARTIAL]` and returns exit code `3`. To finish later, run option `2` with the path to `checkpoint_detection.tar`. An `[ERROR]` result includes the reason, such as a machine ID mismatch or an unreadable checkpoint.
+
+   ```bash
+   bash scripts/check_env.sh --backend anygrasp
+   ```
+
+   To verify model loading and inference with real RGB-D data, use the camera preview or replay a recorded frame. [AnyGrasp filtered preview and replay](examples/anygrasp_filtered/README.md)
 
 ### 2.6 Install GraspNet-Baseline
 
@@ -166,7 +195,7 @@ rebot-grasp preview --input "$run_dir/demo/frame.npz" --output "$run_dir/replay"
 
 ### 3.1 Check the camera and preview grasps
 
-Record a frame to check RGB-to-depth alignment, then open the filtered OBB preview. The preview uses only the camera. Press **G** in the window to save the frame and its grasp candidates. The output shows the raw and filtered grasp estimates side by side. [Filtered OBB guide (Chinese)](docs/obb_filtered.md)
+Record a frame to check RGB-to-depth alignment, then open the filtered OBB preview. The preview uses only the camera. Press **G** in the window to save the frame and its grasp candidates. The output shows the raw and filtered grasp estimates side by side. [Filtered OBB guide](docs/obb_filtered.md)
 
 ```bash
 rebot-grasp record --output "outputs/rgbd/frame-$(date +%s%N).npz"
@@ -175,7 +204,7 @@ bash examples/obb_filtered/run.sh
 
 ### 3.2 Run hand–eye calibration
 
-Check the ArUco marker before starting calibration. The default board uses a **100 mm marker with ID 0**. Measure the black marker edge after printing and enter its length in meters under `calibration.aruco.marker_length_m`. The first command opens the camera for a marker check. Clear the arm's travel area before running the second command, which moves it through the calibration trajectory. [Calibration instructions and printable boards (Chinese)](examples/hand_eye/README.md)
+Check the ArUco marker before starting calibration. The default board uses a **100 mm marker with ID 0**. Measure the black marker edge after printing and enter its length in meters under `calibration.aruco.marker_length_m`. The first command opens the camera for a marker check. Clear the arm's travel area before running the second command, which moves it through the calibration trajectory. [Calibration instructions and printable boards](examples/hand_eye/README.md)
 
 ```bash
 bash examples/hand_eye/run.sh --check-marker
@@ -199,21 +228,21 @@ bash examples/anygrasp_filtered/run.sh
 bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
 
-In the image window, **1** selects the pen, **2** selects the orange, and **3** selects the banana. The order follows `yolo.custom_classes` in the configuration. A green box and white grasp line mark the selected target. Blue boxes and yellow lines mark other targets. The red dot is the grasp center between the jaws, and `Z` is its depth in camera coordinates. The arm skips the pick if the target is missing, the depth check fails, or no candidate is reachable. Press **Q** or **Esc** to end the session. [Filtered AnyGrasp guide (Chinese)](examples/anygrasp_filtered/README.md)
+In the image window, **1** selects the pen, **2** selects the orange, and **3** selects the banana. The order follows `yolo.custom_classes` in the configuration. A green box and white grasp line mark the selected target. Blue boxes and yellow lines mark other targets. The red dot is the grasp center between the jaws, and `Z` is its depth in camera coordinates. The arm skips the pick if the target is missing, the depth check fails, or no candidate is reachable. Press **Q** or **Esc** to end the session. [Filtered AnyGrasp guide](examples/anygrasp_filtered/README.md)
 
 **If the grasp is too shallow**, append `--insertion-depth-mm <mm>` to either filtered execution command and replace `<mm>` with the desired extra travel along the tool's approach direction. This sets the total extra insertion for the run. The current backend defaults are 0 mm for filtered OBB and 5 mm for filtered AnyGrasp. [Filtered OBB settings](config/backends/obb_filtered.yaml) · [Filtered AnyGrasp settings](config/backends/anygrasp_filtered.yaml)
 
-Standard AnyGrasp, single-frame capture, and playback have separate launch commands. [Example index and options (Chinese)](examples/README.md)
+Standard AnyGrasp, single-frame capture, and playback have separate launch commands. [Example index and options](examples/README.md)
 
 ### 3.4 Use GraspNet-Baseline
 
-**Camera preview.** Run the preview and press **G** or **Space** to generate grasp candidates and inspect them in the point cloud window. Press **R** to resume live viewing or **Q** or **Esc** to exit. [GraspNet camera example (Chinese)](examples/graspnet_camera/README.md)
+**Camera preview.** Run the preview and press **G** or **Space** to generate grasp candidates and inspect them in the point cloud window. Press **R** to resume live viewing or **Q** or **Esc** to exit. [GraspNet camera example](examples/graspnet_camera/README.md)
 
 ```bash
 bash examples/graspnet_camera/run.sh
 ```
 
-**Robot execution.** First calibrate the selected camera and check the candidates in the camera preview. The execution example reads `config/calibration/<camera_type>/hand_eye.npz`. It moves the arm to its ready pose on startup, including with `--dry-run`. Press **G** or **Space** to infer and execute a reachable grasp, or **Q** or **Esc** to end the session. Pass a class from the YOLOE vocabulary with `--target-class`. [GraspNet robot example (Chinese)](examples/graspnet_grasp/README.md)
+**Robot execution.** First calibrate the selected camera and check the candidates in the camera preview. The execution example reads `config/calibration/<camera_type>/hand_eye.npz`. It moves the arm to its ready pose on startup, including with `--dry-run`. Press **G** or **Space** to infer and execute a reachable grasp, or **Q** or **Esc** to end the session. Pass a class from the YOLOE vocabulary with `--target-class`. [GraspNet robot example](examples/graspnet_grasp/README.md)
 
 ```bash
 bash examples/graspnet_grasp/run.sh --target-class "yellow banana"
@@ -257,15 +286,37 @@ Rebot-Arm-B601-Visual-Grasping/
 │   ├── pipeline/                 # Capture, planning, execution, and live sessions
 │   └── visualization/            # Overlays, point cloud views, and diagnostics
 ├── examples/                     # Per-example launch script and instructions
-├── scripts/                      # Environment check, setup and launchers
-├── tests/                        # Offline tests
+├── scripts/                      # Environment tools and shared Python launcher
+│   ├── check_env.sh              # Check packages, SDKs and required files
+│   ├── setup_env.sh              # Install missing dependencies and SDKs
+│   ├── anygrasp_license.sh       # Read the machine ID or configure AnyGrasp
+│   ├── run_python.sh            # Launch Python with the project environment
+│   ├── env/                     # Internal environment and SDK helpers
+│   └── legacy/                  # Compatibility launchers for older commands
 ├── docs/                         # SDK setup, coordinate conventions, and module guides
 ├── sdk/                          # Local third-party SDKs and licenses
 ├── models/                       # Local segmentation weights
 └── outputs/                      # Local run results and recordings
 ```
 
-The camera driver supplies RGB-D frames in a common format. The perception layer extracts targets, and the grasp backend proposes candidates in camera coordinates. The planner applies the hand–eye and TCP transforms to produce grasp plans in the robot base frame. The execution layer then calls the B601 control interface. [Architecture and coordinate conventions (Chinese)](docs/architecture.md)
+The camera driver supplies RGB-D frames in a common format. The perception layer extracts targets, and the grasp backend proposes candidates in camera coordinates. The planner applies the hand–eye and TCP transforms to produce grasp plans in the robot base frame. The execution layer then calls the B601 control interface. [Architecture and coordinate conventions](docs/architecture.md)
+
+### Script entry points
+
+Run these commands from the repository root.
+
+| Task | Command |
+| --- | --- |
+| Check the environment | `bash scripts/check_env.sh` |
+| Install missing dependencies and SDKs | `bash scripts/setup_env.sh` |
+| Read the AnyGrasp machine ID or configure its license and weights | `bash scripts/anygrasp_license.sh` |
+| Show the project CLI options | `bash scripts/run_python.sh -m rebot_grasp --help` |
+| Run the filtered OBB camera preview | `bash examples/obb_filtered/run.sh` |
+| Run the filtered AnyGrasp camera preview | `bash examples/anygrasp_filtered/run.sh` |
+
+To run another example, use `bash examples/<example>/run.sh`. Append `--help` where supported to see the available options. [Example index](examples/README.md)
+
+For older launch commands, replace `scripts/<name>` with `scripts/legacy/<name>`. For example, use `bash scripts/legacy/anygrasp.sh` or `python scripts/legacy/main.py`. For GraspNet-only setup and checks, use `--backend graspnet` with the top-level environment scripts.
 
 ## 6. Hand–eye calibration and gripper replacement
 
