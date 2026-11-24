@@ -211,6 +211,8 @@ bash examples/hand_eye/run.sh --check-marker
 bash examples/hand_eye/run.sh
 ```
 
+![Hand–eye calibration demo](https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/Cal.gif)
+
 For the Gemini 336, a successful calibration writes `config/calibration/orbbec_gemini336/hand_eye.npz`. Recalibrate if you change the camera or its mounting position. Point `calibration.hand_eye_path` to the matrix for the current setup.
 
 ### 3.3 Execute an OBB or AnyGrasp pick
@@ -221,12 +223,19 @@ For the Gemini 336, a successful calibration writes `config/calibration/orbbec_g
 bash examples/obb_filtered/run.sh --execute
 ```
 
+![Filtered OBB grasping demo](https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/obb.gif)
+
 **Filtered AnyGrasp.** The first command opens the camera and loads the model. The left pane displays grasp candidates from the raw point cloud and the right pane displays candidates from the filtered cloud. The second command moves the arm to the ready pose. Press **G** to attempt a pick on the selected class using a candidate from the right pane that passes workspace and inverse kinematics checks.
 
 ```bash
 bash examples/anygrasp_filtered/run.sh
 bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
+
+<p>
+  <img src="https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/any.gif" width="48%" alt="Filtered AnyGrasp demo 1">
+  <img src="https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/anygrasp.gif" width="48%" alt="Filtered AnyGrasp demo 2">
+</p>
 
 In the image window, **1** selects the pen, **2** selects the orange, and **3** selects the banana. The order follows `yolo.custom_classes` in the configuration. A green box and white grasp line mark the selected target. Blue boxes and yellow lines mark other targets. The red dot is the grasp center between the jaws, and `Z` is its depth in camera coordinates. The arm skips the pick if the target is missing, the depth check fails, or no candidate is reachable. Press **Q** or **Esc** to end the session. [Filtered AnyGrasp guide](examples/anygrasp_filtered/README.md)
 
@@ -353,3 +362,11 @@ planning:
     - [0, 0, 1,  0.000]
     - [0, 0, 0,  1.000]
 ```
+
+## License
+
+The original reBot integration code is released under the [MIT License](LICENSE). Third-party components are subject to their respective licenses.
+
+- **AnyGrasp SDK and detection weights** are obtained separately from the upstream project. Running the SDK requires an official license for the deployment machine. [AnyGrasp license registration](https://github.com/graspnet/anygrasp_sdk/tree/main/license_registration)
+- **GraspNet-Baseline** is subject to its upstream noncommercial research license. [GraspNet-Baseline license](https://github.com/graspnet/graspnet-baseline/blob/main/LICENSE)
+- **Ultralytics YOLOE** is subject to Ultralytics' AGPL-3.0 or Enterprise License terms, as applicable. [Ultralytics licensing](https://www.ultralytics.com/license)
