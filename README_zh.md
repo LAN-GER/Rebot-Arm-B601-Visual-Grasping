@@ -211,7 +211,7 @@ bash examples/hand_eye/run.sh --check-marker
 bash examples/hand_eye/run.sh
 ```
 
-![手眼标定演示](https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/Cal.gif)
+![手眼标定演示](docs/assets/hand-eye-calibration.gif)
 
 用 Gemini 336 求解成功后得到 `config/calibration/orbbec_gemini336/hand_eye.npz`。更换相机或安装位置后重新标定，并将 `calibration.hand_eye_path` 指向与当前设备对应的矩阵。
 
@@ -223,7 +223,7 @@ bash examples/hand_eye/run.sh
 bash examples/obb_filtered/run.sh --execute
 ```
 
-![过滤版 OBB 抓取演示](https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/obb.gif)
+![过滤版 OBB 抓取演示](docs/assets/filtered-obb.gif)
 
 **过滤版 AnyGrasp。** 第一条命令只开相机和模型，左侧显示原始点云对应的抓取候选，右侧显示过滤后的候选。第二条命令进入准备位，由 **G** 触发一轮抓取，执行当前类别在右侧通过工作范围和 IK 检查的候选。
 
@@ -233,8 +233,8 @@ bash examples/anygrasp_filtered/run.sh --execute --target-class "yellow banana"
 ```
 
 <p>
-  <img src="https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/any.gif" width="48%" alt="过滤版 AnyGrasp 演示一">
-  <img src="https://files.seeedstudio.com/wiki/robotics/projects/rebot_arm/rs_python_visual_grasping/anygrasp.gif" width="48%" alt="过滤版 AnyGrasp 演示二">
+  <img src="docs/assets/filtered-anygrasp-1.gif" width="48%" alt="过滤版 AnyGrasp 演示一">
+  <img src="docs/assets/filtered-anygrasp-2.gif" width="48%" alt="过滤版 AnyGrasp 演示二">
 </p>
 
 图像窗口里 **1** 选笔、**2** 选橙子、**3** 选香蕉，顺序由配置里的 `yolo.custom_classes` 决定。绿色框和白色抓取线对应当前目标，蓝色框和黄色抓取线对应其余目标。红点表示两指之间的抓取中心，`Z` 是该点在相机坐标系中的深度。目标缺失、深度被拒或无可达候选时跳过抓取。按 **Q** 或 **Esc** 结束。[过滤版 AnyGrasp 说明](examples/anygrasp_filtered/README_zh.md)
